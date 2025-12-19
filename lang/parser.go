@@ -260,6 +260,9 @@ func (p *parser) parseBlock() []Stmt {
 }
 
 func (p *parser) parseStmt() Stmt {
+	if p.lookaheadLabel() {
+		return p.parseLabel()
+	}
 	switch {
 	case p.match(LET, CONST):
 		if p.check(IDENT) && p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == COMMA {
@@ -276,6 +279,9 @@ func (p *parser) parseStmt() Stmt {
 		return &BreakStmt{pos: p.previous().Pos}
 	case p.match(CONTINUE):
 		return &ContinueStmt{pos: p.previous().Pos}
+	case p.match(GOTO):
+		name := p.expect(IDENT, "expected label after goto")
+		return &GotoStmt{Label: name.Literal, pos: name.Pos}
 	case p.match(FALLTHROUGH):
 		return &FallthroughStmt{pos: p.previous().Pos}
 	case p.match(IF):
@@ -331,6 +337,20 @@ func (p *parser) parseVarTuple(keyword Token) Stmt {
 		Const: keyword.Type == CONST,
 		pos:   keyword.Pos,
 	}
+}
+
+func (p *parser) lookaheadLabel() bool {
+	if !p.check(IDENT) {
+		return false
+	}
+	return p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == COLON
+}
+
+func (p *parser) parseLabel() Stmt {
+	name := p.advance()
+	p.expect(COLON, "expected ':' after label")
+	st := p.parseStmt()
+	return &LabelStmt{Name: name.Literal, Body: st, pos: name.Pos}
 }
 
 func (p *parser) parseReturn() *ReturnStmt {

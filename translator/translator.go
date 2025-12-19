@@ -527,6 +527,18 @@ func (t *translator) writeStmt(sb *strings.Builder, stmt lang.Stmt, indent int, 
 	case *lang.FallthroughStmt:
 		sb.WriteString(ifIndent(indent))
 		sb.WriteString("fallthrough\n")
+	case *lang.GotoStmt:
+		sb.WriteString(ifIndent(indent))
+		sb.WriteString("goto ")
+		sb.WriteString(s.Label)
+		sb.WriteString("\n")
+	case *lang.LabelStmt:
+		sb.WriteString(ifIndent(indent))
+		sb.WriteString(s.Name)
+		sb.WriteString(":\n")
+		if s.Body != nil {
+			t.writeStmt(sb, s.Body, indent, scope, typeParams, fnResults)
+		}
 	case *lang.IncDecStmt:
 		sb.WriteString(ifIndent(indent))
 		sb.WriteString(t.exprToString(s.Target, scope))

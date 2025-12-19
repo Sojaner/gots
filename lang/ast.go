@@ -223,6 +223,23 @@ type FallthroughStmt struct {
 func (s *FallthroughStmt) stmtNode()     {}
 func (s *FallthroughStmt) Pos() Position { return s.pos }
 
+type GotoStmt struct {
+	Label string
+	pos   Position
+}
+
+func (s *GotoStmt) stmtNode()     {}
+func (s *GotoStmt) Pos() Position { return s.pos }
+
+type LabelStmt struct {
+	Name string
+	Body Stmt
+	pos  Position
+}
+
+func (s *LabelStmt) stmtNode()     {}
+func (s *LabelStmt) Pos() Position { return s.pos }
+
 type IfStmt struct {
 	Cond Expr
 	Then []Stmt

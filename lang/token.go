@@ -82,6 +82,7 @@ const (
 	DEFER
 	BREAK
 	CONTINUE
+	GOTO
 	THROW
 	TRY
 	CATCH
@@ -125,6 +126,7 @@ var keywords = map[string]TokenType{
 	"defer":    DEFER,
 	"break":    BREAK,
 	"continue": CONTINUE,
+	"goto":     GOTO,
 	"throw":    THROW,
 	"try":      TRY,
 	"catch":    CATCH,
