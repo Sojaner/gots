@@ -8,6 +8,27 @@
 
 ## Language subset
 
+The surface syntax borrows heavily from TypeScript. Where we mirror TS exactly:
+
+- `package`/`import` statements match TS module imports (with a `from` clause).
+- `type` aliases, object shapes `{ field: Type }`, and `interface { Method(): Type }` declarations follow TS syntax.
+- Generics use TS angle-bracket type parameters: `function f<T>(x: T): T { ... }` and `type Box<T> = { value: T }`.
+- Function signatures, parameters with type annotations, optional type parameters, and return types use TS forms: `function foo(a: number, b: string): boolean {}`.
+- Variable declarations use TS `let`/`const` with optional type annotations: `let x: number = 1`.
+- Arrow functions use TS syntax: `(x: number, y: number): number => x + y`.
+- Type assertions use TS `expr as Type`.
+
+Extensions beyond TS (Go-flavoured but TS-adjacent):
+
+- `package` keyword (Go-style) and file-scoped packages.
+- Channel types and operations: `chan<T>`, directional `chan<in T>` / `chan<out T>`, `send ch => v`, `await ch` / `<-ch`.
+- Go control flow: `select { case ... }`, `switch type (x)` (type switch), `defer`, `go`/`spawn`, `fallthrough`, labels/goto.
+- `try expr catch err { ... }` sugar for `(T, error)` calls; `throw` translates to `panic`.
+- Multi-value returns and tuple bindings: `function f(): (number, error)`, `let v, ok = m[key]`.
+- Pointers and casts: pointer types `*T`, unary `&`/`*`, and C#-style casts `(Type)expr`.
+- Built-in-like helpers permitted as identifiers (`len`, `cap`, `make`, `new`, `close`) but currently lowered as regular calls.
+- Bitwise/compound operators and `++/--`, which align with Go but not typical TS usage.
+
 - Packages/imports: `package <name>`; `import fmt from "fmt"`.
 - Types: structs (`type Person = { name: string, age: number }`) and interfaces (`type Reader<T> = interface { read(): T }`), with optional type parameters.
 - Functions: `function greet<T>(name: string): string { ... }` (optional `export` to uppercase the Go name); multiple return values with parentheses `function load(): (string, error)`. Methods use `function Person.greet(...) {}`; variadics with TS rest-style `function log(...args: string[]): void`.
