@@ -114,8 +114,17 @@ func (t *translator) writeTypeDecl(sb *strings.Builder, td *lang.TypeDecl) {
 			if i > 0 {
 				sb.WriteString(", ")
 			}
-			sb.WriteString(tp)
-			sb.WriteString(" any")
+			sb.WriteString(tp.Name)
+			sb.WriteString(" ")
+			if tp.Constraint != nil {
+				ct, ok := t.goType(*tp.Constraint, false, nil)
+				if !ok {
+					ct = "any"
+				}
+				sb.WriteString(ct)
+			} else {
+				sb.WriteString("any")
+			}
 		}
 		sb.WriteString("]")
 	}
@@ -140,10 +149,10 @@ func (t *translator) writeTypeDecl(sb *strings.Builder, td *lang.TypeDecl) {
 			}
 			sb.WriteString(")")
 			if len(m.Results) > 0 {
-				rt, ok := t.goType(m.Results[0], true, tpSet)
-				if ok && rt != "" {
+				res := t.renderResults(m.Results, tpSet)
+				if res != "" {
 					sb.WriteString(" ")
-					sb.WriteString(rt)
+					sb.WriteString(res)
 				}
 			}
 			sb.WriteString("\n")
@@ -178,7 +187,14 @@ func (t *translator) writeVarDecl(sb *strings.Builder, vd *lang.VarDecl) {
 	}
 	var valStr string
 	if vd.Value != nil {
-		valStr = t.exprToString(vd.Value, nil)
+		if vd.Type != nil {
+			if lit, ok := t.literalForType(*vd.Type, vd.Value, nil, nil); ok {
+				valStr = lit
+			}
+		}
+		if valStr == "" {
+			valStr = t.exprToString(vd.Value, nil)
+		}
 	}
 	constMode := vd.Const
 	if constMode && (valStr == "" || !isConstExpr(vd.Value)) {
@@ -231,8 +247,17 @@ func (t *translator) writeFunc(sb *strings.Builder, fn *lang.FuncDecl) {
 			if i > 0 {
 				sb.WriteString(", ")
 			}
-			sb.WriteString(tp)
-			sb.WriteString(" any")
+			sb.WriteString(tp.Name)
+			sb.WriteString(" ")
+			if tp.Constraint != nil {
+				ct, ok := t.goType(*tp.Constraint, false, nil)
+				if !ok {
+					ct = "any"
+				}
+				sb.WriteString(ct)
+			} else {
+				sb.WriteString("any")
+			}
 		}
 		sb.WriteString("]")
 	}
@@ -274,7 +299,7 @@ func (t *translator) writeFunc(sb *strings.Builder, fn *lang.FuncDecl) {
 	sb.WriteString("}\n\n")
 }
 
-func (t *translator) writeStmt(sb *strings.Builder, stmt lang.Stmt, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) {
+func (t *translator) writeStmt(sb *strings.Builder, stmt lang.Stmt, indent int, scope map[string]bool, typeParams map[string]lang.TypeParam, fnResults []lang.TypeRef) {
 	switch s := stmt.(type) {
 	case *lang.VarStmt:
 		t.writeVarStmt(sb, s, indent, scope, typeParams, fnResults)
@@ -515,7 +540,7 @@ func (t *translator) writeStmt(sb *strings.Builder, stmt lang.Stmt, indent int, 
 	}
 }
 
-func (t *translator) simpleStmtToString(stmt lang.Stmt, scope map[string]bool, typeParams map[string]bool) string {
+func (t *translator) simpleStmtToString(stmt lang.Stmt, scope map[string]bool, typeParams map[string]lang.TypeParam) string {
 	_ = typeParams
 	if stmt == nil {
 		return ""
@@ -558,7 +583,7 @@ func (t *translator) simpleStmtToString(stmt lang.Stmt, scope map[string]bool, t
 	}
 }
 
-func (t *translator) writeVarStmt(sb *strings.Builder, vs *lang.VarStmt, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) {
+func (t *translator) writeVarStmt(sb *strings.Builder, vs *lang.VarStmt, indent int, scope map[string]bool, typeParams map[string]lang.TypeParam, fnResults []lang.TypeRef) {
 	scope[vs.Name] = true
 	typeStr := ""
 	if vs.Type != nil {
@@ -579,7 +604,14 @@ func (t *translator) writeVarStmt(sb *strings.Builder, vs *lang.VarStmt, indent 
 			return
 		}
 	} else if vs.Value != nil {
-		valStr = t.exprToString(vs.Value, scope)
+		if vs.Type != nil {
+			if lit, ok := t.literalForType(*vs.Type, vs.Value, scope, typeParams); ok {
+				valStr = lit
+			}
+		}
+		if valStr == "" {
+			valStr = t.exprToString(vs.Value, scope)
+		}
 	}
 	sb.WriteString(ifIndent(indent))
 	if typeStr == "" && valStr == "" {
@@ -624,7 +656,7 @@ func (t *translator) writeVarStmt(sb *strings.Builder, vs *lang.VarStmt, indent 
 	sb.WriteString("\n")
 }
 
-func (t *translator) writeVarTupleStmt(sb *strings.Builder, vs *lang.VarTupleStmt, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) {
+func (t *translator) writeVarTupleStmt(sb *strings.Builder, vs *lang.VarTupleStmt, indent int, scope map[string]bool, typeParams map[string]lang.TypeParam, fnResults []lang.TypeRef) {
 	if indent == 0 {
 		t.diag(vs.Pos(), "tuple declarations only allowed inside functions")
 		return
@@ -642,7 +674,7 @@ func (t *translator) writeVarTupleStmt(sb *strings.Builder, vs *lang.VarTupleStm
 	sb.WriteString("\n")
 }
 
-func (t *translator) writeTryAssign(sb *strings.Builder, as *lang.AssignStmt, te *lang.TryExpr, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) {
+func (t *translator) writeTryAssign(sb *strings.Builder, as *lang.AssignStmt, te *lang.TryExpr, indent int, scope map[string]bool, typeParams map[string]lang.TypeParam, fnResults []lang.TypeRef) {
 	if indent == 0 {
 		t.diag(te.Pos(), "try is only valid inside functions")
 		return
@@ -656,7 +688,7 @@ func (t *translator) writeTryAssign(sb *strings.Builder, as *lang.AssignStmt, te
 	sb.WriteString("\n")
 }
 
-func (t *translator) writeTryExprStmt(sb *strings.Builder, te *lang.TryExpr, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) {
+func (t *translator) writeTryExprStmt(sb *strings.Builder, te *lang.TryExpr, indent int, scope map[string]bool, typeParams map[string]lang.TypeParam, fnResults []lang.TypeRef) {
 	if indent == 0 {
 		t.diag(te.Pos(), "try is only valid inside functions")
 		return
@@ -664,7 +696,7 @@ func (t *translator) writeTryExprStmt(sb *strings.Builder, te *lang.TryExpr, ind
 	t.writeTryWithTarget(sb, "_", te, indent, scope, typeParams, fnResults)
 }
 
-func (t *translator) writeReturnStmt(sb *strings.Builder, rs *lang.ReturnStmt, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) {
+func (t *translator) writeReturnStmt(sb *strings.Builder, rs *lang.ReturnStmt, indent int, scope map[string]bool, typeParams map[string]lang.TypeParam, fnResults []lang.TypeRef) {
 	if len(rs.Values) == 1 {
 		if te, ok := rs.Values[0].(*lang.TryExpr); ok {
 			t.writeReturnTry(sb, te, indent, scope, typeParams, fnResults)
@@ -684,7 +716,7 @@ func (t *translator) writeReturnStmt(sb *strings.Builder, rs *lang.ReturnStmt, i
 	sb.WriteString("\n")
 }
 
-func (t *translator) writeReturnTry(sb *strings.Builder, te *lang.TryExpr, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) {
+func (t *translator) writeReturnTry(sb *strings.Builder, te *lang.TryExpr, indent int, scope map[string]bool, typeParams map[string]lang.TypeParam, fnResults []lang.TypeRef) {
 	if indent == 0 {
 		t.diag(te.Pos(), "try is only valid inside functions")
 		return
@@ -705,7 +737,7 @@ func (t *translator) writeReturnTry(sb *strings.Builder, te *lang.TryExpr, inden
 	sb.WriteString("\n")
 }
 
-func (t *translator) writeTryWithTarget(sb *strings.Builder, target string, te *lang.TryExpr, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) string {
+func (t *translator) writeTryWithTarget(sb *strings.Builder, target string, te *lang.TryExpr, indent int, scope map[string]bool, typeParams map[string]lang.TypeParam, fnResults []lang.TypeRef) string {
 	if indent == 0 {
 		t.diag(te.Pos(), "try is only valid inside functions")
 		return target
@@ -744,7 +776,7 @@ func (t *translator) writeTryWithTarget(sb *strings.Builder, target string, te *
 	return valName
 }
 
-func (t *translator) writeErrorReturn(sb *strings.Builder, fnResults []lang.TypeRef, typeParams map[string]bool, indent int, errName string, pos lang.Position) {
+func (t *translator) writeErrorReturn(sb *strings.Builder, fnResults []lang.TypeRef, typeParams map[string]lang.TypeParam, indent int, errName string, pos lang.Position) {
 	if len(fnResults) == 0 || !t.lastIsError(fnResults) {
 		t.diag(pos, "try requires enclosing function to return error")
 		sb.WriteString(ifIndent(indent))
@@ -857,6 +889,52 @@ func (t *translator) funcLitToString(fl *lang.FuncLit, scope map[string]bool) st
 	}
 	sb.WriteString("}")
 	return sb.String()
+}
+
+func (t *translator) literalForType(ref lang.TypeRef, expr lang.Expr, scope map[string]bool, typeParams map[string]lang.TypeParam) (string, bool) {
+	switch v := expr.(type) {
+	case *lang.ArrayLit:
+		if ref.IsArray {
+			elemRef := ref
+			elemRef.IsArray = false
+			elemType, ok := t.goType(elemRef, false, typeParams)
+			if !ok {
+				return "", false
+			}
+			parts := []string{}
+			for _, el := range v.Elements {
+				parts = append(parts, t.exprToString(el, scope))
+			}
+			return fmt.Sprintf("[]%s{%s}", elemType, strings.Join(parts, ", ")), true
+		}
+	case *lang.MapLit:
+		if ref.Name == "map" && len(ref.TypeArgs) == 2 {
+			keyType, ok := t.goType(ref.TypeArgs[0], false, typeParams)
+			if !ok {
+				return "", false
+			}
+			valType, ok := t.goType(ref.TypeArgs[1], false, typeParams)
+			if !ok {
+				return "", false
+			}
+			parts := []string{}
+			for _, el := range v.Elements {
+				parts = append(parts, fmt.Sprintf("%s: %s", strconv.Quote(el.Key), t.exprToString(el.Value, scope)))
+			}
+			return fmt.Sprintf("map[%s]%s{%s}", keyType, valType, strings.Join(parts, ", ")), true
+		}
+		// treat as struct literal
+		typeStr, ok := t.goType(ref, false, typeParams)
+		if !ok || ref.Name == "map" {
+			return "", false
+		}
+		parts := []string{}
+		for _, el := range v.Elements {
+			parts = append(parts, fmt.Sprintf("%s: %s", goName(el.Key, false), t.exprToString(el.Value, scope)))
+		}
+		return fmt.Sprintf("%s{%s}", typeStr, strings.Join(parts, ", ")), true
+	}
+	return "", false
 }
 
 func (t *translator) exprToString(expr lang.Expr, scope map[string]bool) string {
@@ -993,7 +1071,13 @@ func (t *translator) opString(op lang.TokenType) string {
 	}
 }
 
-func (t *translator) goType(ref lang.TypeRef, allowVoid bool, typeParams map[string]bool) (string, bool) {
+func (t *translator) goType(ref lang.TypeRef, allowVoid bool, typeParams map[string]lang.TypeParam) (string, bool) {
+	if typeParams != nil {
+		if tp, ok := typeParams[ref.Name]; ok {
+			_ = tp
+			return ref.Name, true
+		}
+	}
 	if ref.Func != nil {
 		var sb strings.Builder
 		sb.WriteString("func(")
@@ -1025,9 +1109,14 @@ func (t *translator) goType(ref lang.TypeRef, allowVoid bool, typeParams map[str
 		return sb.String(), true
 	}
 	base := ref.Name
-	if typeParams != nil && typeParams[ref.Name] {
-		base = ref.Name
-	} else {
+	if typeParams != nil {
+		if _, ok := typeParams[ref.Name]; ok {
+			base = ref.Name
+		} else {
+			// fallthrough
+		}
+	}
+	if typeParams == nil || typeParams[ref.Name].Name == "" {
 		switch ref.Name {
 		case "number":
 			base = "int"
@@ -1099,10 +1188,13 @@ func (t *translator) goType(ref lang.TypeRef, allowVoid bool, typeParams map[str
 	if ref.IsArray {
 		base = "[]" + base
 	}
+	if ref.IsPointer {
+		base = "*" + base
+	}
 	return base, true
 }
 
-func (t *translator) renderResults(results []lang.TypeRef, typeParams map[string]bool) string {
+func (t *translator) renderResults(results []lang.TypeRef, typeParams map[string]lang.TypeParam) string {
 	if len(results) == 0 {
 		return ""
 	}
@@ -1148,10 +1240,10 @@ func cloneScope(scope map[string]bool) map[string]bool {
 	return out
 }
 
-func makeTypeParamSet(params []string) map[string]bool {
-	out := map[string]bool{}
+func makeTypeParamSet(params []lang.TypeParam) map[string]lang.TypeParam {
+	out := map[string]lang.TypeParam{}
 	for _, p := range params {
-		out[p] = true
+		out[p.Name] = p
 	}
 	return out
 }

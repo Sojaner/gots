@@ -60,6 +60,7 @@ const (
 	IMPORT
 	FROM
 	AS
+	EXTENDS
 	TYPE
 	FUNCTION
 	INTERFACE
@@ -102,6 +103,7 @@ var keywords = map[string]TokenType{
 	"import":   IMPORT,
 	"from":     FROM,
 	"as":       AS,
+	"extends":  EXTENDS,
 	"type":     TYPE,
 	"function": FUNCTION,
 	"interface": INTERFACE,

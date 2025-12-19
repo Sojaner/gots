@@ -34,7 +34,7 @@ type TypeDecl struct {
 	Name        string
 	Fields      []Field
 	Methods     []Method
-	TypeParams  []string
+	TypeParams  []TypeParam
 	IsInterface bool
 	Exported    bool
 	pos         Position
@@ -62,7 +62,7 @@ type FuncDecl struct {
 	Params     []Param
 	Results    []TypeRef
 	Body       []Stmt
-	TypeParams []string
+	TypeParams []TypeParam
 	Variadic   bool
 	Exported   bool
 	pos        Position
@@ -76,6 +76,11 @@ type Param struct {
 	Type TypeRef
 	Variadic bool
 	Pos  Position
+}
+
+type TypeParam struct {
+	Name       string
+	Constraint *TypeRef
 }
 
 type VarDecl struct {
@@ -93,6 +98,7 @@ func (v *VarDecl) Pos() Position { return v.pos }
 type TypeRef struct {
 	Name     string
 	IsArray  bool
+	IsPointer bool
 	ChanDir  int
 	TypeArgs []TypeRef
 	Func     *FuncType

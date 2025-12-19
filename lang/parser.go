@@ -128,7 +128,7 @@ func (p *parser) parseTypeDecl() *TypeDecl {
 			p.expect(RPAREN, "expected ')' to close parameter list")
 			results := []TypeRef{}
 			if p.match(COLON) {
-				results = append(results, p.parseTypeRef())
+				results = p.parseReturnTypes()
 			}
 			td.Methods = append(td.Methods, Method{
 				Name:    mname.Literal,
@@ -226,6 +226,11 @@ func (p *parser) parseTopVarDecl(keyword Token, exported bool) *VarDecl {
 func (p *parser) parseTypeRef() TypeRef {
 	if p.match(LPAREN) {
 		return p.parseFuncType()
+	}
+	if p.match(STAR) {
+		ref := p.parseTypeRef()
+		ref.IsPointer = true
+		return ref
 	}
 	nameTok := p.expect(IDENT, "expected type name")
 	ref := TypeRef{Name: nameTok.Literal, Pos: nameTok.Pos}
@@ -672,14 +677,19 @@ func (p *parser) parseExpression() Expr {
 	return p.parseLogicalOr()
 }
 
-func (p *parser) parseTypeParams() []string {
+func (p *parser) parseTypeParams() []TypeParam {
 	if !p.match(LT) {
 		return nil
 	}
-	var params []string
+	var params []TypeParam
 	for {
 		nameTok := p.expect(IDENT, "expected type parameter name")
-		params = append(params, nameTok.Literal)
+		var constraint *TypeRef
+		if p.match(EXTENDS) {
+			ref := p.parseTypeRef()
+			constraint = &ref
+		}
+		params = append(params, TypeParam{Name: nameTok.Literal, Constraint: constraint})
 		if p.match(COMMA) {
 			continue
 		}
@@ -949,7 +959,7 @@ func (p *parser) parseUnary() Expr {
 		}
 		return &TryExpr{Expr: inner, CatchVar: catchVar, CatchBody: catchBody, pos: pos}
 	}
-	if p.match(BANG, MINUS, LARROW, AWAIT) {
+	if p.match(BANG, MINUS, LARROW, AWAIT, AMPERSAND, STAR) {
 		op := p.previous()
 		right := p.parseUnary()
 		return &UnaryExpr{Op: op.Type, Expr: right, pos: op.Pos}
