@@ -1,0 +1,20 @@
+package main
+
+import fmt from "fmt"
+
+function producer(out: chan<number>): void {
+	out <- 3
+	out <- 7
+}
+
+function consumer(in: chan<number>): void {
+	let a = <-in
+	let b = <-in
+	fmt.Println("received", a, b)
+}
+
+function main(): void {
+	let ch: chan<number> = makeNumberChan()
+	go producer(ch)
+	go consumer(ch)
+}

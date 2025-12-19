@@ -1,0 +1,24 @@
+package main
+
+import fmt from "fmt"
+
+type Greeter = interface {
+	Greet(): string
+}
+
+function greet(g: Greeter): void {
+	fmt.Println(g.Greet())
+}
+
+function mustPositive(n: number): number {
+	if n < 0 {
+		throw "negative not allowed"
+	}
+	return n
+}
+
+function main(): void {
+	let g: Greeter = makeGreeter("gots")
+	greet(g)
+	fmt.Println("checked:", mustPositive(5))
+}

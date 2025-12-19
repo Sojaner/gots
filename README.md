@@ -53,3 +53,11 @@ function main(): void {
 	fmt.Println("hello from", name)
 }
 ```
+
+More samples:
+
+- `examples/generics/main.gots`: generic structs/functions, float support.
+- `examples/interfaces/main.gots`: interface definition/usage plus `throw`; paired with `examples/interfaces/native.go` to supply a concrete `Greeter`.
+- `examples/concurrency/main.gots`: goroutines + channels. Uses a Go helper (`examples/concurrency/native.go`) to provide `makeNumberChan()` via `make(chan int, 4)`.
+
+Some samples rely on small native Go helpers to bridge features like channel creation or concrete interface implementations; see the accompanying `native.go` files.

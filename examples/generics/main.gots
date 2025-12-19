@@ -1,0 +1,22 @@
+package main
+
+import fmt from "fmt"
+
+type Box<T> = { value: T }
+type Pair<T> = { left: T, right: T }
+
+function makeBox<T>(value: T): Box<T> {
+	return { value: value }
+}
+
+function sumPair(p: Pair<float>): float {
+	return p.left + p.right
+}
+
+function main(): void {
+	let boxedNumber = makeBox<number>(42)
+	fmt.Println("boxed:", boxedNumber.value)
+
+	let p: Pair<float> = { left: 1.5, right: 2.25 }
+	fmt.Println("float sum:", sumPair(p))
+}
