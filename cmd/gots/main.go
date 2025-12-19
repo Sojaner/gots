@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -69,7 +68,7 @@ func runTranslate(args []string) {
 		outPath = strings.TrimSuffix(inPath, filepath.Ext(inPath)) + ".go"
 	}
 	if err := translateToFile(inPath, outPath); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintf(os.Stderr, "failed to translate %s: %v\n", inPath, err)
 		os.Exit(1)
 	}
 	fmt.Printf("wrote %s\n", outPath)
@@ -83,12 +82,12 @@ func runRun(args []string) {
 	inPath := args[0]
 	tmpDir, err := os.MkdirTemp("", "gots-run-*")
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintf(os.Stderr, "failed to create temp dir: %v\n", err)
 		os.Exit(1)
 	}
 	outPath := filepath.Join(tmpDir, "main.go")
 	if err := translateToFile(inPath, outPath); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		fmt.Fprintf(os.Stderr, "failed to translate %s: %v\n", inPath, err)
 		os.Exit(1)
 	}
 	cmd := exec.Command("go", "run", outPath)
@@ -100,9 +99,9 @@ func runRun(args []string) {
 }
 
 func translateToFile(inPath, outPath string) error {
-	data, err := ioutil.ReadFile(inPath)
+	data, err := os.ReadFile(inPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to read input file: %w", err)
 	}
 	prog, diags := lang.Parse(string(data))
 	if len(diags) > 0 {
@@ -113,9 +112,9 @@ func translateToFile(inPath, outPath string) error {
 		return fmt.Errorf("cannot translate; found %d issue(s)", len(tdiags))
 	}
 	if err := os.MkdirAll(filepath.Dir(outPath), 0755); err != nil {
-		return err
+		return fmt.Errorf("failed to create output dir: %w", err)
 	}
-	return ioutil.WriteFile(outPath, []byte(code), 0644)
+	return os.WriteFile(outPath, []byte(code), 0644)
 }
 
 func usage() {
