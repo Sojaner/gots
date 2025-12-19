@@ -61,3 +61,40 @@ More samples:
 - `examples/concurrency/main.gots`: goroutines + channels. Uses a Go helper (`examples/concurrency/native.go`) to provide `makeNumberChan()` via `make(chan int, 4)`.
 
 Some samples rely on small native Go helpers to bridge features like channel creation or concrete interface implementations; see the accompanying `native.go` files.
+
+## Full syntax example
+
+```ts
+package main
+
+import fmt from "fmt"
+
+type Result<T> = { value: T, err: error }
+type Worker = interface { Work(): Result<number> }
+
+function wrap<T>(v: T): Result<T> {
+	return { value: v, err: nil }
+}
+
+function worker(name: string): Result<number> {
+	if name == "" {
+		throw "missing name"
+	}
+	return wrap<number>(42)
+}
+
+function producer(out: chan<number>, scale: float): void {
+	let r = worker("bob")
+	if r.err != nil {
+		throw r.err
+	}
+	out <- r.value + int(scale)
+}
+
+function main(): void {
+	let ch: chan<number> = makeNumberChan() // provided by a Go helper
+	go producer(ch, 2.5)
+	let v = <-ch
+	fmt.Println("got", v)
+}
+```
