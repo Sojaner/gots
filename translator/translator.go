@@ -462,6 +462,9 @@ func (t *translator) exprToString(expr lang.Expr, scope map[string]bool) string 
 		right := t.exprToString(e.Right, scope)
 		return fmt.Sprintf("(%s %s %s)", left, op, right)
 	case *lang.UnaryExpr:
+		if e.Op == lang.AWAIT {
+			return fmt.Sprintf("(<-%s)", t.exprToString(e.Expr, scope))
+		}
 		op := t.opString(e.Op)
 		return fmt.Sprintf("(%s%s)", op, t.exprToString(e.Expr, scope))
 	default:
@@ -511,6 +514,8 @@ func (t *translator) opString(op lang.TokenType) string {
 	case lang.BANG:
 		return "!"
 	case lang.LARROW:
+		return "<-"
+	case lang.AWAIT:
 		return "<-"
 	default:
 		return ""

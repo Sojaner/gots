@@ -243,7 +243,9 @@ func (p *parser) parseStmt() Stmt {
 		return p.parseIf()
 	case p.match(FOR):
 		return p.parseFor()
-	case p.match(GO):
+	case p.match(SEND):
+		return p.parseSend()
+	case p.match(GO, SPAWN):
 		pos := p.previous().Pos
 		call := p.parseExpression()
 		return &GoStmt{Call: call, pos: pos}
@@ -290,6 +292,17 @@ func (p *parser) parseThrow() *ThrowStmt {
 		value = p.parseExpression()
 	}
 	return &ThrowStmt{Value: value, pos: pos}
+}
+
+func (p *parser) parseSend() *SendStmt {
+	pos := p.previous().Pos
+	chanExpr := p.parseExpression()
+	if !(p.match(ARROW) || p.match(COMMA)) {
+		p.error(pos, "send expects syntax: send channel => value")
+		return &SendStmt{Chan: chanExpr, Value: &IdentExpr{Name: "", pos: pos}, pos: pos}
+	}
+	value := p.parseExpression()
+	return &SendStmt{Chan: chanExpr, Value: value, pos: pos}
 }
 
 func (p *parser) parseIf() *IfStmt {
@@ -461,7 +474,7 @@ func (p *parser) parseFactor() Expr {
 }
 
 func (p *parser) parseUnary() Expr {
-	if p.match(BANG, MINUS, LARROW) {
+	if p.match(BANG, MINUS, LARROW, AWAIT) {
 		op := p.previous()
 		right := p.parseUnary()
 		return &UnaryExpr{Op: op.Type, Expr: right, pos: op.Pos}

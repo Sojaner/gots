@@ -125,6 +125,12 @@ func (l *Lexer) NextToken() Token {
 			l.read()
 			return tok
 		}
+		if l.peek() == '>' {
+			l.read()
+			tok := Token{Type: ARROW, Literal: "=>", Pos: pos}
+			l.read()
+			return tok
+		}
 		tok := Token{Type: EQ, Literal: "=", Pos: pos}
 		l.read()
 		return tok

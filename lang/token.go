@@ -27,6 +27,7 @@ const (
 	PERCENT
 	BANG
 	EQ
+	ARROW
 	EQEQ
 	BANGEQ
 	LT
@@ -43,6 +44,9 @@ const (
 	TYPE
 	FUNCTION
 	INTERFACE
+	SEND
+	SPAWN
+	AWAIT
 	LET
 	CONST
 	RETURN
@@ -70,6 +74,9 @@ var keywords = map[string]TokenType{
 	"type":     TYPE,
 	"function": FUNCTION,
 	"interface": INTERFACE,
+	"send":     SEND,
+	"await":    AWAIT,
+	"spawn":    SPAWN,
 	"let":      LET,
 	"const":    CONST,
 	"return":   RETURN,

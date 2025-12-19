@@ -1,8 +1,8 @@
 package main
 
-import x from "fmt"
+import fmt from "fmt"
 
 function main(): void {
 	let name: string = "gots"
-	x.Println("hello from", name)
+	fmt.Println("hello from", name)
 }
