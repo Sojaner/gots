@@ -41,6 +41,18 @@ function main(): void {
 		fmt.Println("map", k, v)
 	}
 
+	let m = { hello: "world" }
+	let arr = [1, 2, 3]
+	fmt.Println("map lit", m)
+	fmt.Println("array lit", arr)
+
+	let val, ok = lookup()["two"]
+	fmt.Println("map ok:", val, ok)
+
+	let anyv: any = "x"
+	let s = anyv as string
+	fmt.Println("asserted:", s)
+
 	let good = try double(3)
 	fmt.Println("good", good)
 

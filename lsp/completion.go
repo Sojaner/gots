@@ -34,6 +34,7 @@ var keywordCompletions = []CompletionItem{
 	{Label: "send", Kind: CompletionItemKindKeyword, Detail: "keyword"},
 	{Label: "await", Kind: CompletionItemKindKeyword, Detail: "keyword"},
 	{Label: "throw", Kind: CompletionItemKindKeyword, Detail: "keyword"},
+	{Label: "as", Kind: CompletionItemKindKeyword, Detail: "keyword"},
 	{Label: "try", Kind: CompletionItemKindKeyword, Detail: "keyword"},
 	{Label: "catch", Kind: CompletionItemKindKeyword, Detail: "keyword"},
 	{Label: "defer", Kind: CompletionItemKindKeyword, Detail: "keyword"},

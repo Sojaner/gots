@@ -278,6 +278,8 @@ func (t *translator) writeStmt(sb *strings.Builder, stmt lang.Stmt, indent int, 
 	switch s := stmt.(type) {
 	case *lang.VarStmt:
 		t.writeVarStmt(sb, s, indent, scope, typeParams, fnResults)
+	case *lang.VarTupleStmt:
+		t.writeVarTupleStmt(sb, s, indent, scope, typeParams, fnResults)
 	case *lang.AssignStmt:
 		if te, ok := s.Value.(*lang.TryExpr); ok {
 			t.writeTryAssign(sb, s, te, indent, scope, typeParams, fnResults)
@@ -608,6 +610,24 @@ func (t *translator) writeVarStmt(sb *strings.Builder, vs *lang.VarStmt, indent 
 	sb.WriteString("\n")
 }
 
+func (t *translator) writeVarTupleStmt(sb *strings.Builder, vs *lang.VarTupleStmt, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) {
+	if indent == 0 {
+		t.diag(vs.Pos(), "tuple declarations only allowed inside functions")
+		return
+	}
+	if vs.Const {
+		t.diag(vs.Pos(), "const tuple treated as var")
+	}
+	for _, n := range vs.Names {
+		scope[n] = true
+	}
+	sb.WriteString(ifIndent(indent))
+	sb.WriteString(strings.Join(vs.Names, ", "))
+	sb.WriteString(" := ")
+	sb.WriteString(t.exprToString(vs.Value, scope))
+	sb.WriteString("\n")
+}
+
 func (t *translator) writeTryAssign(sb *strings.Builder, as *lang.AssignStmt, te *lang.TryExpr, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) {
 	if indent == 0 {
 		t.diag(te.Pos(), "try is only valid inside functions")
@@ -840,6 +860,18 @@ func (t *translator) exprToString(expr lang.Expr, scope map[string]bool) string 
 		return "false"
 	case *lang.NilLit:
 		return "nil"
+	case *lang.MapLit:
+		parts := []string{}
+		for _, el := range e.Elements {
+			parts = append(parts, fmt.Sprintf("%q: %s", el.Key, t.exprToString(el.Value, scope)))
+		}
+		return fmt.Sprintf("map[string]interface{}{%s}", strings.Join(parts, ", "))
+	case *lang.ArrayLit:
+		parts := []string{}
+		for _, el := range e.Elements {
+			parts = append(parts, t.exprToString(el, scope))
+		}
+		return fmt.Sprintf("[]interface{}{%s}", strings.Join(parts, ", "))
 	case *lang.CallExpr:
 		var args []string
 		for _, a := range e.Args {
@@ -865,6 +897,12 @@ func (t *translator) exprToString(expr lang.Expr, scope map[string]bool) string 
 		return t.exprToString(e.Expr, scope)
 	case *lang.FuncLit:
 		return t.funcLitToString(e, scope)
+	case *lang.TypeAssertExpr:
+		typ, ok := t.goType(e.Type, false, nil)
+		if !ok {
+			typ = "interface{}"
+		}
+		return fmt.Sprintf("(%s.(%s))", t.exprToString(e.Expr, scope), typ)
 	case *lang.BinaryExpr:
 		op := t.opString(e.Op)
 		left := t.exprToString(e.Left, scope)
@@ -1009,6 +1047,12 @@ func (t *translator) goType(ref lang.TypeRef, allowVoid bool, typeParams map[str
 				return "", false
 			}
 			base = "chan " + args[0]
+			if ref.ChanDir == lang.ChanDirRecv {
+				base = "<-chan " + args[0]
+			}
+			if ref.ChanDir == lang.ChanDirSend {
+				base = "chan<- " + args[0]
+			}
 		} else if ref.Name == "map" {
 			if len(args) != 2 {
 				t.diag(ref.Pos, "map requires key and value type arguments, e.g. map<string, number>")

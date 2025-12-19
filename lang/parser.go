@@ -229,6 +229,9 @@ func (p *parser) parseTypeRef() TypeRef {
 	}
 	nameTok := p.expect(IDENT, "expected type name")
 	ref := TypeRef{Name: nameTok.Literal, Pos: nameTok.Pos}
+	if ref.Name == "chan" {
+		return p.parseChanTypeRef(ref)
+	}
 	ref.TypeArgs = p.parseTypeArgs()
 	if p.match(LBRACKET) {
 		p.expect(RBRACKET, "expected ']' after '[' in array type")
@@ -254,6 +257,9 @@ func (p *parser) parseBlock() []Stmt {
 func (p *parser) parseStmt() Stmt {
 	switch {
 	case p.match(LET, CONST):
+		if p.check(IDENT) && p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == COMMA {
+			return p.parseVarTuple(p.previous())
+		}
 		return p.parseVarStmt(p.previous())
 	case p.match(RETURN):
 		return p.parseReturn()
@@ -302,6 +308,20 @@ func (p *parser) parseVarStmt(keyword Token) *VarStmt {
 	return &VarStmt{
 		Name:  nameTok.Literal,
 		Type:  typeRef,
+		Value: value,
+		Const: keyword.Type == CONST,
+		pos:   keyword.Pos,
+	}
+}
+
+func (p *parser) parseVarTuple(keyword Token) Stmt {
+	first := p.expect(IDENT, "expected variable name")
+	p.expect(COMMA, "expected ',' in tuple declaration")
+	second := p.expect(IDENT, "expected second variable name")
+	p.expect(EQ, "expected '=' in tuple declaration")
+	value := p.parseExpression()
+	return &VarTupleStmt{
+		Names: []string{first.Literal, second.Literal},
 		Value: value,
 		Const: keyword.Type == CONST,
 		pos:   keyword.Pos,
@@ -638,6 +658,28 @@ func (p *parser) parseTypeArgs() []TypeRef {
 	return args
 }
 
+func (p *parser) parseChanTypeRef(ref TypeRef) TypeRef {
+	if !p.match(LT) {
+		p.error(ref.Pos, "chan requires a type argument, e.g. chan<number>")
+		return ref
+	}
+	if p.match(IDENT) && (p.previous().Literal == "in" || p.previous().Literal == "out") {
+		dir := p.previous().Literal
+		elem := p.parseTypeRef()
+		ref.TypeArgs = []TypeRef{elem}
+		if dir == "in" {
+			ref.ChanDir = ChanDirSend
+		} else {
+			ref.ChanDir = ChanDirRecv
+		}
+	} else {
+		elem := p.parseTypeRef()
+		ref.TypeArgs = []TypeRef{elem}
+	}
+	p.expect(GT, "expected '>' after chan type argument")
+	return ref
+}
+
 func (p *parser) parseFuncType() TypeRef {
 	start := p.previous().Pos
 	params := []Param{}
@@ -865,6 +907,41 @@ func (p *parser) parsePrimary() Expr {
 		expr := p.parseExpression()
 		p.expect(RPAREN, "expected ')' after expression")
 		return p.finishPostfix(expr)
+	case p.match(LBRACKET):
+		pos := p.previous().Pos
+		elems := []Expr{}
+		if !p.check(RBRACKET) {
+			for {
+				elems = append(elems, p.parseExpression())
+				if !p.match(COMMA) {
+					break
+				}
+			}
+		}
+		p.expect(RBRACKET, "expected ']' after array literal")
+		return p.finishPostfix(&ArrayLit{Elements: elems, pos: pos})
+	case p.match(LBRACE):
+		pos := p.previous().Pos
+		elems := []MapElement{}
+		if !p.check(RBRACE) {
+			for {
+				var key string
+				if p.match(STRING) {
+					key = p.previous().Literal
+				} else {
+					tok := p.expect(IDENT, "expected key in map literal")
+					key = tok.Literal
+				}
+				p.expect(COLON, "expected ':' after key")
+				val := p.parseExpression()
+				elems = append(elems, MapElement{Key: key, Value: val, Pos: pos})
+				if !p.match(COMMA) {
+					break
+				}
+			}
+		}
+		p.expect(RBRACE, "expected '}' after map literal")
+		return &MapLit{Elements: elems, pos: pos}
 	default:
 		tok := p.peek()
 		p.error(tok.Pos, "unexpected token in expression")
@@ -890,6 +967,9 @@ func (p *parser) finishPostfix(expr Expr) Expr {
 		} else if p.match(DOT) {
 			prop := p.expect(IDENT, "expected property name after '.'")
 			expr = &MemberExpr{Object: expr, Property: prop.Literal, pos: prop.Pos}
+		} else if p.match(AS) {
+			ty := p.parseTypeRef()
+			expr = &TypeAssertExpr{Expr: expr, Type: ty, pos: ty.Pos}
 		} else if p.match(LBRACKET) {
 			lpos := p.previous().Pos
 			var low Expr

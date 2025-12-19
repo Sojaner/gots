@@ -93,10 +93,17 @@ func (v *VarDecl) Pos() Position { return v.pos }
 type TypeRef struct {
 	Name     string
 	IsArray  bool
+	ChanDir  int
 	TypeArgs []TypeRef
 	Func     *FuncType
 	Pos      Position
 }
+
+const (
+	ChanDirNone = iota
+	ChanDirRecv
+	ChanDirSend
+)
 
 type FuncType struct {
 	Params   []Param
@@ -119,6 +126,16 @@ type VarStmt struct {
 
 func (s *VarStmt) stmtNode()     {}
 func (s *VarStmt) Pos() Position { return s.pos }
+
+type VarTupleStmt struct {
+	Names []string
+	Value Expr
+	Const bool
+	pos   Position
+}
+
+func (s *VarTupleStmt) stmtNode()     {}
+func (s *VarTupleStmt) Pos() Position { return s.pos }
 
 type AssignStmt struct {
 	Target Expr
@@ -321,6 +338,28 @@ type NilLit struct {
 func (e *NilLit) exprNode()   {}
 func (e *NilLit) Pos() Position { return e.pos }
 
+type ArrayLit struct {
+	Elements []Expr
+	pos      Position
+}
+
+func (e *ArrayLit) exprNode()   {}
+func (e *ArrayLit) Pos() Position { return e.pos }
+
+type MapElement struct {
+	Key   string
+	Value Expr
+	Pos   Position
+}
+
+type MapLit struct {
+	Elements []MapElement
+	pos      Position
+}
+
+func (e *MapLit) exprNode()   {}
+func (e *MapLit) Pos() Position { return e.pos }
+
 type CallExpr struct {
 	Callee Expr
 	Args   []Expr
@@ -397,3 +436,12 @@ type FuncLit struct {
 
 func (e *FuncLit) exprNode()   {}
 func (e *FuncLit) Pos() Position { return e.pos }
+
+type TypeAssertExpr struct {
+	Expr Expr
+	Type TypeRef
+	pos  Position
+}
+
+func (e *TypeAssertExpr) exprNode()   {}
+func (e *TypeAssertExpr) Pos() Position { return e.pos }

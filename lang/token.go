@@ -42,6 +42,7 @@ const (
 	PACKAGE
 	IMPORT
 	FROM
+	AS
 	TYPE
 	FUNCTION
 	INTERFACE
@@ -83,6 +84,7 @@ var keywords = map[string]TokenType{
 	"package":  PACKAGE,
 	"import":   IMPORT,
 	"from":     FROM,
+	"as":       AS,
 	"type":     TYPE,
 	"function": FUNCTION,
 	"interface": INTERFACE,
