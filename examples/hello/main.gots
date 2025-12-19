@@ -1,0 +1,8 @@
+package main
+
+import x from "fmt"
+
+function main(): void {
+	let name: string = "gots"
+	x.Println("hello from", name)
+}
