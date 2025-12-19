@@ -14,6 +14,7 @@ func Translate(prog lang.Program) (string, []lang.Diagnostic) {
 	tr := &translator{
 		typeNames: map[string]string{},
 		exports:   map[string]string{},
+		funcSigs:  map[string][]lang.TypeRef{},
 	}
 	tr.indexDecls(prog)
 	code := tr.renderProgram(prog)
@@ -23,6 +24,7 @@ func Translate(prog lang.Program) (string, []lang.Diagnostic) {
 type translator struct {
 	typeNames map[string]string
 	exports   map[string]string
+	funcSigs  map[string][]lang.TypeRef
 	diags     []lang.Diagnostic
 }
 
@@ -46,6 +48,7 @@ func (t *translator) indexDecls(prog lang.Program) {
 			} else {
 				t.exports[d.Name] = d.Name
 			}
+			t.funcSigs[d.Name] = d.Results
 		case *lang.VarDecl:
 			goName := goName(d.Name, d.Exported)
 			if d.Exported {
@@ -591,6 +594,7 @@ func (t *translator) writeTryWithTarget(sb *strings.Builder, target string, te *
 		t.diag(te.Pos(), "try is only valid inside functions")
 		return target
 	}
+	t.validateTry(te)
 	valName := target
 	if valName == "" {
 		valName = t.freshName("val", scope)
@@ -681,6 +685,21 @@ func (t *translator) freshName(prefix string, scope map[string]bool) string {
 		name = fmt.Sprintf("%s%d", prefix, i)
 	}
 	return name
+}
+
+func (t *translator) validateTry(te *lang.TryExpr) {
+	call, ok := te.Expr.(*lang.CallExpr)
+	if !ok {
+		t.diag(te.Pos(), "try expects a call expression that returns (T, error)")
+		return
+	}
+	if id, ok := call.Callee.(*lang.IdentExpr); ok {
+		if sig, ok := t.funcSigs[id.Name]; ok {
+			if len(sig) != 2 || !t.lastIsError(sig) {
+				t.diag(te.Pos(), "try target must return exactly (T, error)")
+			}
+		}
+	}
 }
 
 func (t *translator) exprToString(expr lang.Expr, scope map[string]bool) string {

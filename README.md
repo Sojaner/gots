@@ -61,6 +61,7 @@ More samples:
 - `examples/generics/main.gots`: generic structs/functions, float support.
 - `examples/interfaces/main.gots`: interface definition/usage plus `throw`; paired with `examples/interfaces/native.go` to supply a concrete `Greeter`.
 - `examples/concurrency/main.gots`: goroutines + channels. Uses Go helpers (`examples/concurrency/native.go`) such as `makeIntChannel(size)` (built on a generic `makeChannel[T]`) to create buffered channels.
+- `examples/controlflow/main.gots`: switch/case, range loops over slice/map provided by Go helpers, and `try/catch` sugar for `(T, error)` calls.
 
 Some samples rely on small native Go helpers to bridge features like channel creation or concrete interface implementations; see the accompanying `native.go` files.
 
