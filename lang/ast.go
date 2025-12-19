@@ -394,6 +394,15 @@ type CallExpr struct {
 func (e *CallExpr) exprNode()   {}
 func (e *CallExpr) Pos() Position { return e.pos }
 
+type CastExpr struct {
+	Type TypeRef
+	Expr Expr
+	pos  Position
+}
+
+func (e *CastExpr) exprNode()   {}
+func (e *CastExpr) Pos() Position { return e.pos }
+
 type TryExpr struct {
 	Expr      Expr
 	CatchVar  string

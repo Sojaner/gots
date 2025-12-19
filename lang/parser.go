@@ -964,6 +964,16 @@ func (p *parser) parseUnary() Expr {
 		right := p.parseUnary()
 		return &UnaryExpr{Op: op.Type, Expr: right, pos: op.Pos}
 	}
+	if p.match(LPAREN) {
+		lpPos := p.previous().Pos
+		save := p.pos
+		ref := p.parseTypeRef()
+		if p.match(RPAREN) {
+			operand := p.parseUnary()
+			return &CastExpr{Type: ref, Expr: operand, pos: lpPos}
+		}
+		p.pos = save - 1 // rewind to before '('
+	}
 	return p.parsePrimary()
 }
 

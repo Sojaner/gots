@@ -552,6 +552,8 @@ func (t *translator) simpleStmtToString(stmt lang.Stmt, scope map[string]bool, t
 			return ""
 		}
 		return fmt.Sprintf("%s = %s", t.exprToString(s.Target, scope), t.exprToString(s.Value, scope))
+	case *lang.AssignTupleStmt:
+		return fmt.Sprintf("%s = %s", strings.Join(s.Names, ", "), t.exprToString(s.Value, scope))
 	case *lang.ExprStmt:
 		if _, ok := s.Expr.(*lang.TryExpr); ok {
 			t.diag(s.Pos(), "try is not supported inside for clauses")
@@ -815,7 +817,7 @@ func (t *translator) zeroValue(ref lang.TypeRef, typ string) string {
 	case "string":
 		return "\"\""
 	}
-	if strings.HasPrefix(typ, "[]") || strings.HasPrefix(typ, "map[") || strings.HasPrefix(typ, "chan ") || typ == "interface{}" || typ == "error" {
+	if strings.HasPrefix(typ, "[]") || strings.HasPrefix(typ, "map[") || strings.HasPrefix(typ, "chan ") || strings.HasPrefix(typ, "*") || typ == "interface{}" || typ == "error" {
 		return "nil"
 	}
 	return fmt.Sprintf("*new(%s)", typ)
@@ -965,6 +967,18 @@ func (t *translator) exprToString(expr lang.Expr, scope map[string]bool) string 
 		}
 		return fmt.Sprintf("[]interface{}{%s}", strings.Join(parts, ", "))
 	case *lang.CallExpr:
+		if id, ok := e.Callee.(*lang.IdentExpr); ok {
+			switch id.Name {
+			case "len", "cap":
+				if len(e.Args) != 1 {
+					t.diag(e.Pos(), id.Name+" expects exactly 1 argument")
+				}
+			case "close":
+				if len(e.Args) != 1 {
+					t.diag(e.Pos(), "close expects exactly 1 argument")
+				}
+			}
+		}
 		var args []string
 		for _, a := range e.Args {
 			args = append(args, t.exprToString(a, scope))
@@ -989,6 +1003,15 @@ func (t *translator) exprToString(expr lang.Expr, scope map[string]bool) string 
 		return t.exprToString(e.Expr, scope)
 	case *lang.FuncLit:
 		return t.funcLitToString(e, scope)
+	case *lang.CastExpr:
+		typ, ok := t.goType(e.Type, false, nil)
+		if !ok {
+			typ = ""
+		}
+		if typ == "" {
+			return t.exprToString(e.Expr, scope)
+		}
+		return fmt.Sprintf("%s(%s)", typ, t.exprToString(e.Expr, scope))
 	case *lang.TypeAssertExpr:
 		typ, ok := t.goType(e.Type, false, nil)
 		if !ok {
@@ -1072,12 +1095,6 @@ func (t *translator) opString(op lang.TokenType) string {
 }
 
 func (t *translator) goType(ref lang.TypeRef, allowVoid bool, typeParams map[string]lang.TypeParam) (string, bool) {
-	if typeParams != nil {
-		if tp, ok := typeParams[ref.Name]; ok {
-			_ = tp
-			return ref.Name, true
-		}
-	}
 	if ref.Func != nil {
 		var sb strings.Builder
 		sb.WriteString("func(")
@@ -1112,8 +1129,6 @@ func (t *translator) goType(ref lang.TypeRef, allowVoid bool, typeParams map[str
 	if typeParams != nil {
 		if _, ok := typeParams[ref.Name]; ok {
 			base = ref.Name
-		} else {
-			// fallthrough
 		}
 	}
 	if typeParams == nil || typeParams[ref.Name].Name == "" {

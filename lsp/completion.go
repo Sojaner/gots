@@ -18,6 +18,7 @@ var keywordCompletions = []CompletionItem{
 	{Label: "function", Kind: CompletionItemKindKeyword, Detail: "keyword"},
 	{Label: "type", Kind: CompletionItemKindKeyword, Detail: "keyword"},
 	{Label: "interface", Kind: CompletionItemKindKeyword, Detail: "keyword"},
+	{Label: "extends", Kind: CompletionItemKindKeyword, Detail: "keyword"},
 	{Label: "let", Kind: CompletionItemKindKeyword, Detail: "keyword"},
 	{Label: "const", Kind: CompletionItemKindKeyword, Detail: "keyword"},
 	{Label: "export", Kind: CompletionItemKindKeyword, Detail: "keyword"},
