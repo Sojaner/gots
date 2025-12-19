@@ -235,13 +235,10 @@ func (t *translator) writeFunc(sb *strings.Builder, fn *lang.FuncDecl) {
 	sb.WriteString(")")
 
 	if len(fn.Results) > 0 {
-		typ, ok := t.goType(fn.Results[0], true, typeParams)
-		if !ok {
-			typ = ""
-		}
-		if typ != "" {
+		res := t.renderResults(fn.Results, typeParams)
+		if res != "" {
 			sb.WriteString(" ")
-			sb.WriteString(typ)
+			sb.WriteString(res)
 		}
 	}
 	sb.WriteString(" {\n")
@@ -251,33 +248,35 @@ func (t *translator) writeFunc(sb *strings.Builder, fn *lang.FuncDecl) {
 		scope[p.Name] = true
 	}
 	for _, stmt := range fn.Body {
-		t.writeStmt(sb, stmt, 1, scope, typeParams)
+		t.writeStmt(sb, stmt, 1, scope, typeParams, fn.Results)
 	}
 	sb.WriteString("}\n\n")
 }
 
-func (t *translator) writeStmt(sb *strings.Builder, stmt lang.Stmt, indent int, scope map[string]bool, typeParams map[string]bool) {
+func (t *translator) writeStmt(sb *strings.Builder, stmt lang.Stmt, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) {
 	switch s := stmt.(type) {
 	case *lang.VarStmt:
-		t.writeVarStmt(sb, s, indent, scope, typeParams)
+		t.writeVarStmt(sb, s, indent, scope, typeParams, fnResults)
 	case *lang.AssignStmt:
+		if te, ok := s.Value.(*lang.TryExpr); ok {
+			t.writeTryAssign(sb, s, te, indent, scope, typeParams, fnResults)
+			return
+		}
 		sb.WriteString(ifIndent(indent))
 		sb.WriteString(t.exprToString(s.Target, scope))
 		sb.WriteString(" = ")
 		sb.WriteString(t.exprToString(s.Value, scope))
 		sb.WriteString("\n")
 	case *lang.ExprStmt:
+		if te, ok := s.Expr.(*lang.TryExpr); ok {
+			t.writeTryExprStmt(sb, te, indent, scope, typeParams, fnResults)
+			return
+		}
 		sb.WriteString(ifIndent(indent))
 		sb.WriteString(t.exprToString(s.Expr, scope))
 		sb.WriteString("\n")
 	case *lang.ReturnStmt:
-		sb.WriteString(ifIndent(indent))
-		sb.WriteString("return")
-		if s.Value != nil {
-			sb.WriteString(" ")
-			sb.WriteString(t.exprToString(s.Value, scope))
-		}
-		sb.WriteString("\n")
+		t.writeReturnStmt(sb, s, indent, scope, typeParams, fnResults)
 	case *lang.IfStmt:
 		sb.WriteString(ifIndent(indent))
 		sb.WriteString("if ")
@@ -285,7 +284,7 @@ func (t *translator) writeStmt(sb *strings.Builder, stmt lang.Stmt, indent int, 
 		sb.WriteString(" {\n")
 		thenScope := cloneScope(scope)
 		for _, st := range s.Then {
-			t.writeStmt(sb, st, indent+1, thenScope, typeParams)
+			t.writeStmt(sb, st, indent+1, thenScope, typeParams, fnResults)
 		}
 		sb.WriteString(ifIndent(indent))
 		sb.WriteString("}")
@@ -293,7 +292,7 @@ func (t *translator) writeStmt(sb *strings.Builder, stmt lang.Stmt, indent int, 
 			sb.WriteString(" else {\n")
 			elseScope := cloneScope(scope)
 			for _, st := range s.Else {
-				t.writeStmt(sb, st, indent+1, elseScope, typeParams)
+				t.writeStmt(sb, st, indent+1, elseScope, typeParams, fnResults)
 			}
 			sb.WriteString(ifIndent(indent))
 			sb.WriteString("}")
@@ -320,7 +319,64 @@ func (t *translator) writeStmt(sb *strings.Builder, stmt lang.Stmt, indent int, 
 		sb.WriteString(" {\n")
 		bodyScope := cloneScope(loopScope)
 		for _, st := range s.Body {
-			t.writeStmt(sb, st, indent+1, bodyScope, typeParams)
+			t.writeStmt(sb, st, indent+1, bodyScope, typeParams, fnResults)
+		}
+		sb.WriteString(ifIndent(indent))
+		sb.WriteString("}\n")
+	case *lang.RangeStmt:
+		sb.WriteString(ifIndent(indent))
+		loopScope := cloneScope(scope)
+		key := "_"
+		val := "_"
+		if s.Key != "" {
+			key = s.Key
+			loopScope[key] = true
+		}
+		if s.Value != "" {
+			val = s.Value
+			loopScope[val] = true
+		}
+		sb.WriteString("for ")
+		sb.WriteString(key)
+		sb.WriteString(", ")
+		sb.WriteString(val)
+		sb.WriteString(" := range ")
+		sb.WriteString(t.exprToString(s.Expr, scope))
+		sb.WriteString(" {\n")
+		bodyScope := cloneScope(loopScope)
+		for _, st := range s.Body {
+			t.writeStmt(sb, st, indent+1, bodyScope, typeParams, fnResults)
+		}
+		sb.WriteString(ifIndent(indent))
+		sb.WriteString("}\n")
+	case *lang.SwitchStmt:
+		sb.WriteString(ifIndent(indent))
+		sb.WriteString("switch ")
+		sb.WriteString(t.exprToString(s.Expr, scope))
+		sb.WriteString(" {\n")
+		for _, c := range s.Cases {
+			for i, v := range c.Values {
+				if i == 0 {
+					sb.WriteString(ifIndent(indent))
+					sb.WriteString("\tcase ")
+				} else {
+					sb.WriteString(", ")
+				}
+				sb.WriteString(t.exprToString(v, scope))
+			}
+			sb.WriteString(":\n")
+			caseScope := cloneScope(scope)
+			for _, st := range c.Body {
+				t.writeStmt(sb, st, indent+1, caseScope, typeParams, fnResults)
+			}
+		}
+		if len(s.Default) > 0 {
+			sb.WriteString(ifIndent(indent))
+			sb.WriteString("\tdefault:\n")
+			defScope := cloneScope(scope)
+			for _, st := range s.Default {
+				t.writeStmt(sb, st, indent+1, defScope, typeParams, fnResults)
+			}
 		}
 		sb.WriteString(ifIndent(indent))
 		sb.WriteString("}\n")
@@ -344,6 +400,17 @@ func (t *translator) writeStmt(sb *strings.Builder, stmt lang.Stmt, indent int, 
 			sb.WriteString("\"error\"")
 		}
 		sb.WriteString(")\n")
+	case *lang.DeferStmt:
+		sb.WriteString(ifIndent(indent))
+		sb.WriteString("defer ")
+		sb.WriteString(t.exprToString(s.Call, scope))
+		sb.WriteString("\n")
+	case *lang.BreakStmt:
+		sb.WriteString(ifIndent(indent))
+		sb.WriteString("break\n")
+	case *lang.ContinueStmt:
+		sb.WriteString(ifIndent(indent))
+		sb.WriteString("continue\n")
 	default:
 		t.diag(stmt.Pos(), "statement not supported in translator")
 	}
@@ -356,13 +423,25 @@ func (t *translator) simpleStmtToString(stmt lang.Stmt, scope map[string]bool, t
 	}
 	switch s := stmt.(type) {
 	case *lang.AssignStmt:
+		if _, ok := s.Value.(*lang.TryExpr); ok {
+			t.diag(s.Pos(), "try is not supported inside for clauses")
+			return ""
+		}
 		return fmt.Sprintf("%s = %s", t.exprToString(s.Target, scope), t.exprToString(s.Value, scope))
 	case *lang.ExprStmt:
+		if _, ok := s.Expr.(*lang.TryExpr); ok {
+			t.diag(s.Pos(), "try is not supported inside for clauses")
+			return ""
+		}
 		return t.exprToString(s.Expr, scope)
 	case *lang.VarStmt:
 		name := s.Name
 		if s.Const {
 			t.diag(s.Pos(), "const is not allowed in for clause; using short var")
+		}
+		if _, ok := s.Value.(*lang.TryExpr); ok {
+			t.diag(s.Pos(), "try is not supported inside for clauses")
+			return ""
 		}
 		val := ""
 		if s.Value != nil {
@@ -378,7 +457,7 @@ func (t *translator) simpleStmtToString(stmt lang.Stmt, scope map[string]bool, t
 	}
 }
 
-func (t *translator) writeVarStmt(sb *strings.Builder, vs *lang.VarStmt, indent int, scope map[string]bool, typeParams map[string]bool) {
+func (t *translator) writeVarStmt(sb *strings.Builder, vs *lang.VarStmt, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) {
 	scope[vs.Name] = true
 	typeStr := ""
 	if vs.Type != nil {
@@ -387,7 +466,18 @@ func (t *translator) writeVarStmt(sb *strings.Builder, vs *lang.VarStmt, indent 
 		}
 	}
 	valStr := ""
-	if vs.Value != nil {
+	if te, ok := vs.Value.(*lang.TryExpr); ok {
+		if indent == 0 {
+			t.diag(vs.Pos(), "try is only valid inside functions")
+			valStr = t.exprToString(te.Expr, scope)
+		} else {
+			if vs.Const {
+				t.diag(vs.Pos(), "const with try is emitted as var")
+			}
+			t.writeTryWithTarget(sb, vs.Name, te, indent, scope, typeParams, fnResults)
+			return
+		}
+	} else if vs.Value != nil {
 		valStr = t.exprToString(vs.Value, scope)
 	}
 	sb.WriteString(ifIndent(indent))
@@ -433,6 +523,166 @@ func (t *translator) writeVarStmt(sb *strings.Builder, vs *lang.VarStmt, indent 
 	sb.WriteString("\n")
 }
 
+func (t *translator) writeTryAssign(sb *strings.Builder, as *lang.AssignStmt, te *lang.TryExpr, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) {
+	if indent == 0 {
+		t.diag(te.Pos(), "try is only valid inside functions")
+		return
+	}
+	valName := t.freshName("tmp", scope)
+	t.writeTryWithTarget(sb, valName, te, indent, scope, typeParams, fnResults)
+	sb.WriteString(ifIndent(indent))
+	sb.WriteString(t.exprToString(as.Target, scope))
+	sb.WriteString(" = ")
+	sb.WriteString(valName)
+	sb.WriteString("\n")
+}
+
+func (t *translator) writeTryExprStmt(sb *strings.Builder, te *lang.TryExpr, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) {
+	if indent == 0 {
+		t.diag(te.Pos(), "try is only valid inside functions")
+		return
+	}
+	t.writeTryWithTarget(sb, "_", te, indent, scope, typeParams, fnResults)
+}
+
+func (t *translator) writeReturnStmt(sb *strings.Builder, rs *lang.ReturnStmt, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) {
+	if len(rs.Values) == 1 {
+		if te, ok := rs.Values[0].(*lang.TryExpr); ok {
+			t.writeReturnTry(sb, te, indent, scope, typeParams, fnResults)
+			return
+		}
+	}
+	sb.WriteString(ifIndent(indent))
+	sb.WriteString("return")
+	if len(rs.Values) > 0 {
+		parts := []string{}
+		for _, v := range rs.Values {
+			parts = append(parts, t.exprToString(v, scope))
+		}
+		sb.WriteString(" ")
+		sb.WriteString(strings.Join(parts, ", "))
+	}
+	sb.WriteString("\n")
+}
+
+func (t *translator) writeReturnTry(sb *strings.Builder, te *lang.TryExpr, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) {
+	if indent == 0 {
+		t.diag(te.Pos(), "try is only valid inside functions")
+		return
+	}
+	valName := t.writeTryWithTarget(sb, t.freshName("val", scope), te, indent, scope, typeParams, fnResults)
+	sb.WriteString(ifIndent(indent))
+	sb.WriteString("return ")
+	if len(fnResults) > 0 && t.lastIsError(fnResults) {
+		if len(fnResults) == 1 {
+			sb.WriteString("nil")
+		} else {
+			sb.WriteString(valName)
+			sb.WriteString(", nil")
+		}
+	} else {
+		sb.WriteString(valName)
+	}
+	sb.WriteString("\n")
+}
+
+func (t *translator) writeTryWithTarget(sb *strings.Builder, target string, te *lang.TryExpr, indent int, scope map[string]bool, typeParams map[string]bool, fnResults []lang.TypeRef) string {
+	if indent == 0 {
+		t.diag(te.Pos(), "try is only valid inside functions")
+		return target
+	}
+	valName := target
+	if valName == "" {
+		valName = t.freshName("val", scope)
+	}
+	errName := t.freshName("err", scope)
+	call := t.exprToString(te.Expr, scope)
+	sb.WriteString(ifIndent(indent))
+	sb.WriteString(fmt.Sprintf("%s, %s := %s\n", valName, errName, call))
+	sb.WriteString(ifIndent(indent))
+	sb.WriteString("if ")
+	sb.WriteString(errName)
+	sb.WriteString(" != nil {\n")
+	catchScope := cloneScope(scope)
+	if te.CatchVar != "" {
+		catchScope[te.CatchVar] = true
+		sb.WriteString(ifIndent(indent + 1))
+		sb.WriteString(te.CatchVar)
+		sb.WriteString(" := ")
+		sb.WriteString(errName)
+		sb.WriteString("\n")
+	}
+	if len(te.CatchBody) > 0 {
+		for _, st := range te.CatchBody {
+			t.writeStmt(sb, st, indent+1, catchScope, typeParams, fnResults)
+		}
+	} else {
+		t.writeErrorReturn(sb, fnResults, typeParams, indent+1, errName, te.Pos())
+	}
+	sb.WriteString(ifIndent(indent))
+	sb.WriteString("}\n")
+	return valName
+}
+
+func (t *translator) writeErrorReturn(sb *strings.Builder, fnResults []lang.TypeRef, typeParams map[string]bool, indent int, errName string, pos lang.Position) {
+	if len(fnResults) == 0 || !t.lastIsError(fnResults) {
+		t.diag(pos, "try requires enclosing function to return error")
+		sb.WriteString(ifIndent(indent))
+		sb.WriteString("panic(\"error\")\n")
+		return
+	}
+	parts := []string{}
+	for i, r := range fnResults {
+		typ, _ := t.goType(r, i == len(fnResults)-1, typeParams)
+		if i == len(fnResults)-1 {
+			parts = append(parts, errName)
+			continue
+		}
+		parts = append(parts, t.zeroValue(r, typ))
+	}
+	sb.WriteString(ifIndent(indent))
+	sb.WriteString("return ")
+	sb.WriteString(strings.Join(parts, ", "))
+	sb.WriteString("\n")
+}
+
+func (t *translator) zeroValue(ref lang.TypeRef, typ string) string {
+	if typ == "" {
+		return "nil"
+	}
+	switch ref.Name {
+	case "number", "int":
+		return "0"
+	case "float", "float64":
+		return "0"
+	case "boolean", "bool":
+		return "false"
+	case "string":
+		return "\"\""
+	}
+	if strings.HasPrefix(typ, "[]") || strings.HasPrefix(typ, "map[") || strings.HasPrefix(typ, "chan ") || typ == "interface{}" || typ == "error" {
+		return "nil"
+	}
+	return fmt.Sprintf("*new(%s)", typ)
+}
+
+func (t *translator) lastIsError(results []lang.TypeRef) bool {
+	if len(results) == 0 {
+		return false
+	}
+	return results[len(results)-1].Name == "error"
+}
+
+func (t *translator) freshName(prefix string, scope map[string]bool) string {
+	name := prefix
+	i := 0
+	for scope != nil && scope[name] {
+		i++
+		name = fmt.Sprintf("%s%d", prefix, i)
+	}
+	return name
+}
+
 func (t *translator) exprToString(expr lang.Expr, scope map[string]bool) string {
 	switch e := expr.(type) {
 	case *lang.IdentExpr:
@@ -456,6 +706,21 @@ func (t *translator) exprToString(expr lang.Expr, scope map[string]bool) string 
 		return fmt.Sprintf("%s(%s)", t.exprToString(e.Callee, scope), strings.Join(args, ", "))
 	case *lang.MemberExpr:
 		return fmt.Sprintf("%s.%s", t.exprToString(e.Object, scope), e.Property)
+	case *lang.IndexExpr:
+		return fmt.Sprintf("%s[%s]", t.exprToString(e.Object, scope), t.exprToString(e.Index, scope))
+	case *lang.SliceExpr:
+		low := ""
+		high := ""
+		if e.Low != nil {
+			low = t.exprToString(e.Low, scope)
+		}
+		if e.High != nil {
+			high = t.exprToString(e.High, scope)
+		}
+		return fmt.Sprintf("%s[%s:%s]", t.exprToString(e.Object, scope), low, high)
+	case *lang.TryExpr:
+		t.diag(expr.Pos(), "try expressions are only supported as standalone statements or initializers")
+		return t.exprToString(e.Expr, scope)
 	case *lang.BinaryExpr:
 		op := t.opString(e.Op)
 		left := t.exprToString(e.Left, scope)
@@ -536,21 +801,23 @@ func (t *translator) goType(ref lang.TypeRef, allowVoid bool, typeParams map[str
 			base = "string"
 		case "boolean":
 			base = "bool"
-		case "any":
-			base = "interface{}"
-		case "void":
-			if allowVoid && !ref.IsArray {
-				return "", true
-			}
-			t.diag(ref.Pos, "void type is only valid as a function return")
-			return "", false
-		case "error":
-			base = "error"
-		default:
-			if mapped, ok := t.typeNames[ref.Name]; ok {
-				base = mapped
-			}
+	case "any":
+		base = "interface{}"
+	case "void":
+		if allowVoid && !ref.IsArray {
+			return "", true
 		}
+		t.diag(ref.Pos, "void type is only valid as a function return")
+		return "", false
+	case "error":
+		base = "error"
+	case "map":
+		base = "map"
+	default:
+		if mapped, ok := t.typeNames[ref.Name]; ok {
+			base = mapped
+		}
+	}
 	}
 
 	if len(ref.TypeArgs) > 0 {
@@ -568,6 +835,12 @@ func (t *translator) goType(ref lang.TypeRef, allowVoid bool, typeParams map[str
 				return "", false
 			}
 			base = "chan " + args[0]
+		} else if ref.Name == "map" {
+			if len(args) != 2 {
+				t.diag(ref.Pos, "map requires key and value type arguments, e.g. map<string, number>")
+				return "", false
+			}
+			base = fmt.Sprintf("map[%s]%s", args[0], args[1])
 		} else {
 			base = fmt.Sprintf("%s[%s]", base, strings.Join(args, ", "))
 		}
@@ -576,11 +849,40 @@ func (t *translator) goType(ref lang.TypeRef, allowVoid bool, typeParams map[str
 		t.diag(ref.Pos, "chan requires a type argument, e.g. chan<number>")
 		return "", false
 	}
+	if ref.Name == "map" && len(ref.TypeArgs) == 0 {
+		t.diag(ref.Pos, "map requires key and value type arguments, e.g. map<string, number>")
+		return "", false
+	}
 
 	if ref.IsArray {
 		base = "[]" + base
 	}
 	return base, true
+}
+
+func (t *translator) renderResults(results []lang.TypeRef, typeParams map[string]bool) string {
+	if len(results) == 0 {
+		return ""
+	}
+	out := []string{}
+	for i, r := range results {
+		allowVoid := i == len(results)-1
+		typ, ok := t.goType(r, allowVoid, typeParams)
+		if !ok {
+			return ""
+		}
+		if typ == "" {
+			continue
+		}
+		out = append(out, typ)
+	}
+	if len(out) == 0 {
+		return ""
+	}
+	if len(out) == 1 {
+		return out[0]
+	}
+	return fmt.Sprintf("(%s)", strings.Join(out, ", "))
 }
 
 func goName(name string, exported bool) string {

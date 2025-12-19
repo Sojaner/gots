@@ -54,7 +54,16 @@ const (
 	ELSE
 	FOR
 	GO
+	SWITCH
+	CASE
+	DEFAULT
+	DEFER
+	BREAK
+	CONTINUE
 	THROW
+	TRY
+	CATCH
+	OF
 	EXPORT
 	TRUE
 	FALSE
@@ -84,7 +93,16 @@ var keywords = map[string]TokenType{
 	"else":     ELSE,
 	"for":      FOR,
 	"go":       GO,
+	"switch":   SWITCH,
+	"case":     CASE,
+	"default":  DEFAULT,
+	"defer":    DEFER,
+	"break":    BREAK,
+	"continue": CONTINUE,
 	"throw":    THROW,
+	"try":      TRY,
+	"catch":    CATCH,
+	"of":       OF,
 	"export":   EXPORT,
 	"true":     TRUE,
 	"false":    FALSE,

@@ -10,13 +10,15 @@
 
 - Packages/imports: `package <name>`; `import fmt from "fmt"`.
 - Types: structs (`type Person = { name: string, age: number }`) and interfaces (`type Reader<T> = interface { read(): T }`), with optional type parameters.
-- Functions: `function greet<T>(name: string): string { ... }` (optional `export` to uppercase the Go name).
+- Functions: `function greet<T>(name: string): string { ... }` (optional `export` to uppercase the Go name); multiple return values with parentheses `function load(): (string, error)`.
 - Variables: `let`/`const` with optional type annotation. Inside functions, `let` becomes `:=` when possible; top-level uses `var`/`const`.
-- Statements: expression statements, assignments, channel send (`send ch => v` or `ch <- v`), `go`/`spawn` to start goroutines, `throw`→`panic`, `if/else`, `for (init; cond; post)`, `return`.
-- Expressions: identifiers, number/string/bool/nil literals, unary `!`/`-`/`<-`/`await` (channel receive), binary `+ - * / % == != < <= > >= && ||`, member access (`fmt.Println`), and calls.
-- Types supported: `number`→`int`, `float`→`float64`, `string`, `boolean`→`bool`, `any`→`interface{}`, `error`, `void` (only as return), generics (`Box<string>`), channels (`chan<number>` requires a type argument), array types via `name[]`.
+- Statements: expression statements, assignments, channel send (`send ch => v` or `ch <- v`), `go`/`spawn` to start goroutines, `throw`→`panic`, `if/else`, `for (init; cond; post)`, range loops `for (let v of xs)` or `for (let k, v of m)`, `switch/case/default`, `defer`, `break`/`continue`, `return`.
+- Expressions: identifiers, number/string/bool/nil literals, unary `!`/`-`/`<-`/`await` (channel receive), binary `+ - * / % == != < <= > >= && ||`, member access (`fmt.Println`), calls, indexing/slicing (`xs[i]`, `xs[a:b]`), and a restricted `try expr catch err { ... }` sugar for Go-style `(T, error)` calls.
+- Types supported: `number`→`int`, `float`→`float64`, `string`, `boolean`→`bool`, `any`→`interface{}`, `error`, `void` (only as return), generics (`Box<string>`), channels (`chan<number>` requires a type argument), `map<K,V>`, array types via `name[]`.
 
 Anything outside this subset is flagged as a diagnostic by the parser/translator.
+
+Error handling sugar: `try` assumes a call returns `(T, error)` and the enclosing function returns `error` last. `let v = try read(path)` lowers to `v, err := read(path); if err != nil { return err }`. You can optionally add `catch err { ... }` to handle the error instead of auto-returning.
 
 Note: channel creation currently assumes you obtain a channel from Go helpers or as a parameter; once you have one, you can send (`send ch => v` or `ch <- v`) and receive (`let v = await ch` or `let v = <-ch`). Helpers like `makeChannel<T>(size)` / `makeIntChannel(size)` live in Go.
 

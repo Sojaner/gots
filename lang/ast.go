@@ -128,7 +128,7 @@ func (s *ExprStmt) stmtNode()     {}
 func (s *ExprStmt) Pos() Position { return s.pos }
 
 type ReturnStmt struct {
-	Value Expr
+	Values []Expr
 	pos   Position
 }
 
@@ -141,6 +141,28 @@ func (s *ReturnStmt) stmtNode()     {}
 func (s *ReturnStmt) Pos() Position { return s.pos }
 func (s *ThrowStmt) stmtNode()     {}
 func (s *ThrowStmt) Pos() Position { return s.pos }
+
+type DeferStmt struct {
+	Call Expr
+	pos  Position
+}
+
+func (s *DeferStmt) stmtNode()     {}
+func (s *DeferStmt) Pos() Position { return s.pos }
+
+type BreakStmt struct {
+	pos Position
+}
+
+func (s *BreakStmt) stmtNode()     {}
+func (s *BreakStmt) Pos() Position { return s.pos }
+
+type ContinueStmt struct {
+	pos Position
+}
+
+func (s *ContinueStmt) stmtNode()     {}
+func (s *ContinueStmt) Pos() Position { return s.pos }
 
 type IfStmt struct {
 	Cond Expr
@@ -162,6 +184,33 @@ type ForStmt struct {
 
 func (s *ForStmt) stmtNode()     {}
 func (s *ForStmt) Pos() Position { return s.pos }
+
+type RangeStmt struct {
+	Key   string
+	Value string
+	Expr  Expr
+	Body  []Stmt
+	pos   Position
+}
+
+func (s *RangeStmt) stmtNode()     {}
+func (s *RangeStmt) Pos() Position { return s.pos }
+
+type SwitchStmt struct {
+	Expr    Expr
+	Cases   []CaseClause
+	Default []Stmt
+	pos     Position
+}
+
+type CaseClause struct {
+	Values []Expr
+	Body   []Stmt
+	Pos    Position
+}
+
+func (s *SwitchStmt) stmtNode()     {}
+func (s *SwitchStmt) Pos() Position { return s.pos }
 
 type GoStmt struct {
 	Call Expr
@@ -233,6 +282,16 @@ type CallExpr struct {
 func (e *CallExpr) exprNode()   {}
 func (e *CallExpr) Pos() Position { return e.pos }
 
+type TryExpr struct {
+	Expr      Expr
+	CatchVar  string
+	CatchBody []Stmt
+	pos       Position
+}
+
+func (e *TryExpr) exprNode()   {}
+func (e *TryExpr) Pos() Position { return e.pos }
+
 type BinaryExpr struct {
 	Op    TokenType
 	Left  Expr
@@ -260,3 +319,22 @@ type MemberExpr struct {
 
 func (e *MemberExpr) exprNode()   {}
 func (e *MemberExpr) Pos() Position { return e.pos }
+
+type IndexExpr struct {
+	Object Expr
+	Index  Expr
+	pos    Position
+}
+
+func (e *IndexExpr) exprNode()   {}
+func (e *IndexExpr) Pos() Position { return e.pos }
+
+type SliceExpr struct {
+	Object Expr
+	Low    Expr
+	High   Expr
+	pos    Position
+}
+
+func (e *SliceExpr) exprNode()   {}
+func (e *SliceExpr) Pos() Position { return e.pos }

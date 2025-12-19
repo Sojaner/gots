@@ -186,7 +186,7 @@ func (p *parser) parseFuncDecl() *FuncDecl {
 	p.expect(RPAREN, "expected ')' to close parameter list")
 
 	if p.match(COLON) {
-		fd.Results = append(fd.Results, p.parseTypeRef())
+		fd.Results = p.parseReturnTypes()
 	}
 
 	fd.Body = p.parseBlock()
@@ -239,10 +239,18 @@ func (p *parser) parseStmt() Stmt {
 		return p.parseReturn()
 	case p.match(THROW):
 		return p.parseThrow()
+	case p.match(DEFER):
+		return p.parseDefer()
+	case p.match(BREAK):
+		return &BreakStmt{pos: p.previous().Pos}
+	case p.match(CONTINUE):
+		return &ContinueStmt{pos: p.previous().Pos}
 	case p.match(IF):
 		return p.parseIf()
 	case p.match(FOR):
 		return p.parseFor()
+	case p.match(SWITCH):
+		return p.parseSwitch()
 	case p.match(SEND):
 		return p.parseSend()
 	case p.match(GO, SPAWN):
@@ -278,11 +286,14 @@ func (p *parser) parseVarStmt(keyword Token) *VarStmt {
 
 func (p *parser) parseReturn() *ReturnStmt {
 	pos := p.previous().Pos
-	var value Expr
+	var values []Expr
 	if !p.check(SEMICOLON) && !p.check(RBRACE) && !p.check(EOF) {
-		value = p.parseExpression()
+		values = append(values, p.parseExpression())
+		for p.match(COMMA) {
+			values = append(values, p.parseExpression())
+		}
 	}
-	return &ReturnStmt{Value: value, pos: pos}
+	return &ReturnStmt{Values: values, pos: pos}
 }
 
 func (p *parser) parseThrow() *ThrowStmt {
@@ -292,6 +303,12 @@ func (p *parser) parseThrow() *ThrowStmt {
 		value = p.parseExpression()
 	}
 	return &ThrowStmt{Value: value, pos: pos}
+}
+
+func (p *parser) parseDefer() *DeferStmt {
+	pos := p.previous().Pos
+	call := p.parseExpression()
+	return &DeferStmt{Call: call, pos: pos}
 }
 
 func (p *parser) parseSend() *SendStmt {
@@ -324,9 +341,13 @@ func (p *parser) parseIf() *IfStmt {
 	return &IfStmt{Cond: cond, Then: thenBlock, Else: elseBlock, pos: pos}
 }
 
-func (p *parser) parseFor() *ForStmt {
+func (p *parser) parseFor() Stmt {
 	pos := p.previous().Pos
 	p.expect(LPAREN, "expected '(' after for")
+
+	if p.lookaheadRangeFor() {
+		return p.parseRangeFor(pos)
+	}
 
 	var init Stmt
 	if !p.check(SEMICOLON) {
@@ -353,6 +374,98 @@ func (p *parser) parseFor() *ForStmt {
 
 	body := p.parseBlock()
 	return &ForStmt{Init: init, Cond: cond, Post: post, Body: body, pos: pos}
+}
+
+func (p *parser) lookaheadRangeFor() bool {
+	if p.isAtEnd() {
+		return false
+	}
+	tok := p.peek()
+	if tok.Type != LET && tok.Type != CONST {
+		return false
+	}
+	if p.pos+1 >= len(p.tokens) || p.tokens[p.pos+1].Type != IDENT {
+		return false
+	}
+	i := p.pos + 2
+	if i < len(p.tokens) && p.tokens[i].Type == COMMA {
+		i++
+		if i >= len(p.tokens) || p.tokens[i].Type != IDENT {
+			return false
+		}
+		i++
+	}
+	if i < len(p.tokens) && p.tokens[i].Type == OF {
+		return true
+	}
+	return false
+}
+
+func (p *parser) parseRangeFor(pos Position) *RangeStmt {
+	kw := p.advance() // let/const
+	_ = kw
+	first := p.expect(IDENT, "expected variable name in range loop")
+	var second Token
+	if p.match(COMMA) {
+		second = p.expect(IDENT, "expected second variable name in range loop")
+	}
+	p.expect(OF, "expected 'of' in range loop")
+	expr := p.parseExpression()
+	p.expect(RPAREN, "expected ')' after range expression")
+	body := p.parseBlock()
+	key := ""
+	value := first.Literal
+	if second.Literal != "" {
+		key = first.Literal
+		value = second.Literal
+	}
+	return &RangeStmt{Key: key, Value: value, Expr: expr, Body: body, pos: pos}
+}
+
+func (p *parser) parseSwitch() *SwitchStmt {
+	pos := p.previous().Pos
+	p.expect(LPAREN, "expected '(' after switch")
+	expr := p.parseExpression()
+	p.expect(RPAREN, "expected ')' after switch expression")
+	p.expect(LBRACE, "expected '{' to start switch")
+
+	stmt := &SwitchStmt{Expr: expr, pos: pos}
+	for !p.check(RBRACE) && !p.isAtEnd() {
+		switch {
+		case p.match(CASE):
+			casePos := p.previous().Pos
+			values := []Expr{p.parseExpression()}
+			for p.match(COMMA) {
+				values = append(values, p.parseExpression())
+			}
+			p.expect(COLON, "expected ':' after case value")
+			body := []Stmt{}
+			for !p.check(CASE) && !p.check(DEFAULT) && !p.check(RBRACE) && !p.isAtEnd() {
+				st := p.parseStmt()
+				if st != nil {
+					body = append(body, st)
+				}
+				p.match(SEMICOLON)
+			}
+			stmt.Cases = append(stmt.Cases, CaseClause{Values: values, Body: body, Pos: casePos})
+		case p.match(DEFAULT):
+			p.expect(COLON, "expected ':' after default")
+			body := []Stmt{}
+			for !p.check(CASE) && !p.check(RBRACE) && !p.isAtEnd() {
+				st := p.parseStmt()
+				if st != nil {
+					body = append(body, st)
+				}
+				p.match(SEMICOLON)
+			}
+			stmt.Default = body
+		default:
+			p.errorAtCurrent("expected case or default in switch")
+			p.advance()
+		}
+	}
+	p.expect(RBRACE, "expected '}' to close switch")
+	return stmt
 }
 
 func (p *parser) parseExprOrAssign() Stmt {
@@ -411,6 +524,23 @@ func (p *parser) parseTypeArgs() []TypeRef {
 	}
 	p.expect(GT, "expected '>' after type arguments")
 	return args
+}
+
+func (p *parser) parseReturnTypes() []TypeRef {
+	if p.match(LPAREN) {
+		var results []TypeRef
+		if !p.check(RPAREN) {
+			for {
+				results = append(results, p.parseTypeRef())
+				if !p.match(COMMA) {
+					break
+				}
+			}
+		}
+		p.expect(RPAREN, "expected ')' after return types")
+		return results
+	}
+	return []TypeRef{p.parseTypeRef()}
 }
 
 func (p *parser) parseLogicalOr() Expr {
@@ -474,6 +604,24 @@ func (p *parser) parseFactor() Expr {
 }
 
 func (p *parser) parseUnary() Expr {
+	if p.match(TRY) {
+		pos := p.previous().Pos
+		inner := p.parseUnary()
+		var catchVar string
+		var catchBody []Stmt
+		if p.match(CATCH) {
+			if p.match(LPAREN) {
+				ident := p.expect(IDENT, "expected identifier after catch")
+				catchVar = ident.Literal
+				p.expect(RPAREN, "expected ')' after catch identifier")
+			} else if p.check(IDENT) {
+				ident := p.advance()
+				catchVar = ident.Literal
+			}
+			catchBody = p.parseBlock()
+		}
+		return &TryExpr{Expr: inner, CatchVar: catchVar, CatchBody: catchBody, pos: pos}
+	}
 	if p.match(BANG, MINUS, LARROW, AWAIT) {
 		op := p.previous()
 		right := p.parseUnary()
@@ -531,6 +679,27 @@ func (p *parser) finishPostfix(expr Expr) Expr {
 		} else if p.match(DOT) {
 			prop := p.expect(IDENT, "expected property name after '.'")
 			expr = &MemberExpr{Object: expr, Property: prop.Literal, pos: prop.Pos}
+		} else if p.match(LBRACKET) {
+			lpos := p.previous().Pos
+			var low Expr
+			if !p.check(COLON) && !p.check(RBRACKET) {
+				low = p.parseExpression()
+			}
+			if p.match(COLON) {
+				var high Expr
+				if !p.check(RBRACKET) {
+					high = p.parseExpression()
+				}
+				p.expect(RBRACKET, "expected ']' after slice")
+				expr = &SliceExpr{Object: expr, Low: low, High: high, pos: lpos}
+			} else {
+				p.expect(RBRACKET, "expected ']' after index")
+				if low == nil {
+					p.error(lpos, "index expression requires a value")
+					low = &IdentExpr{Name: "", pos: lpos}
+				}
+				expr = &IndexExpr{Object: expr, Index: low, pos: lpos}
+			}
 		} else {
 			break
 		}
