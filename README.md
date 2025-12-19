@@ -18,7 +18,7 @@
 
 Anything outside this subset is flagged as a diagnostic by the parser/translator.
 
-Note: channel creation currently assumes you obtain a channel from Go helpers or as a parameter; once you have one, you can send (`send ch => v` or `ch <- v`) and receive (`let v = await ch` or `let v = <-ch`).
+Note: channel creation currently assumes you obtain a channel from Go helpers or as a parameter; once you have one, you can send (`send ch => v` or `ch <- v`) and receive (`let v = await ch` or `let v = <-ch`). Helpers like `makeChannel<T>(size)` / `makeIntChannel(size)` live in Go.
 
 ## CLI
 
@@ -58,7 +58,7 @@ More samples:
 
 - `examples/generics/main.gots`: generic structs/functions, float support.
 - `examples/interfaces/main.gots`: interface definition/usage plus `throw`; paired with `examples/interfaces/native.go` to supply a concrete `Greeter`.
-- `examples/concurrency/main.gots`: goroutines + channels. Uses a Go helper (`examples/concurrency/native.go`) to provide `makeNumberChan()` via `make(chan int, 4)`.
+- `examples/concurrency/main.gots`: goroutines + channels. Uses Go helpers (`examples/concurrency/native.go`) such as `makeIntChannel(size)` (built on a generic `makeChannel[T]`) to create buffered channels.
 
 Some samples rely on small native Go helpers to bridge features like channel creation or concrete interface implementations; see the accompanying `native.go` files.
 
@@ -92,9 +92,9 @@ function producer(out: chan<number>, scale: float): void {
 }
 
 function main(): void {
-	let ch: chan<number> = makeNumberChan() // provided by a Go helper
-	spawn producer(ch, 2.5)
-	let v = await ch
-	fmt.Println("got", v)
+let ch: chan<number> = makeIntChannel(4) // provided by a Go helper
+spawn producer(ch, 2.5)
+let v = await ch
+fmt.Println("got", v)
 }
 ```

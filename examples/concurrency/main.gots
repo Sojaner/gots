@@ -14,7 +14,7 @@ function consumer(in: chan<number>): void {
 }
 
 function main(): void {
-	let ch: chan<number> = makeNumberChan()
+	let ch: chan<number> = makeIntChannel(4)
 	spawn producer(ch)
 	spawn consumer(ch)
 }
