@@ -89,6 +89,13 @@ func (l *Lexer) NextToken() Token {
 		l.read()
 		return tok
 	case '.':
+		if l.peek() == '.' && l.offset+1 < len(l.input) && l.input[l.offset+1] == '.' {
+			l.read()
+			l.read()
+			tok := Token{Type: ELLIPSIS, Literal: "...", Pos: pos}
+			l.read()
+			return tok
+		}
 		tok := Token{Type: DOT, Literal: ".", Pos: pos}
 		l.read()
 		return tok

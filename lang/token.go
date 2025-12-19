@@ -35,6 +35,7 @@ const (
 	GT
 	GTEQ
 	LARROW
+	ELLIPSIS
 	ANDAND
 	OROR
 
@@ -54,9 +55,11 @@ const (
 	ELSE
 	FOR
 	GO
+	SELECT
 	SWITCH
 	CASE
 	DEFAULT
+	FALLTHROUGH
 	DEFER
 	BREAK
 	CONTINUE
@@ -93,9 +96,11 @@ var keywords = map[string]TokenType{
 	"else":     ELSE,
 	"for":      FOR,
 	"go":       GO,
+	"select":   SELECT,
 	"switch":   SWITCH,
 	"case":     CASE,
 	"default":  DEFAULT,
+	"fallthrough": FALLTHROUGH,
 	"defer":    DEFER,
 	"break":    BREAK,
 	"continue": CONTINUE,

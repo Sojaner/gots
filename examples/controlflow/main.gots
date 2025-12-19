@@ -1,0 +1,68 @@
+package main
+
+import fmt from "fmt"
+import errors from "errors"
+
+function double(n: number): (number, error) {
+	if n < 0 {
+		return 0, errors.New("negative not allowed")
+	}
+	return n * 2, nil
+}
+
+function label(score: number): string {
+	switch (score) {
+	case 0:
+		return "zero"
+	case 1, 2:
+		return "low"
+	default:
+		return "high"
+	}
+}
+
+function kindOf(v: any): string {
+	switch type (v) {
+	case string:
+		return "string"
+	case number:
+		return "number"
+	default:
+		return "other"
+	}
+}
+
+function main(): void {
+	for (let _, v of numbers()) {
+		fmt.Println("num", v)
+	}
+
+	for (let k, v of lookup()) {
+		fmt.Println("map", k, v)
+	}
+
+	let good = try double(3)
+	fmt.Println("good", good)
+
+	let captured = try double(-1) catch err {
+		fmt.Println("caught", err)
+		return
+	}
+	fmt.Println("unreachable", captured)
+
+	fmt.Println("label:", label(2))
+
+	let add = (a: number, b: number): number => { return a + b }
+	fmt.Println("lambda add", add(2, 3))
+
+	select {
+	case send numbersChannel() => 5:
+		fmt.Println("sent value")
+	case let v = await numbersChannel():
+		fmt.Println("received", v)
+	default:
+		fmt.Println("default select")
+	}
+
+	fmt.Println("type:", kindOf("x"))
+}

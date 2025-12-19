@@ -10,11 +10,11 @@
 
 - Packages/imports: `package <name>`; `import fmt from "fmt"`.
 - Types: structs (`type Person = { name: string, age: number }`) and interfaces (`type Reader<T> = interface { read(): T }`), with optional type parameters.
-- Functions: `function greet<T>(name: string): string { ... }` (optional `export` to uppercase the Go name); multiple return values with parentheses `function load(): (string, error)`.
+- Functions: `function greet<T>(name: string): string { ... }` (optional `export` to uppercase the Go name); multiple return values with parentheses `function load(): (string, error)`. Methods use `function Person.greet(...) {}`; variadics with TS rest-style `function log(...args: string[]): void`.
 - Variables: `let`/`const` with optional type annotation. Inside functions, `let` becomes `:=` when possible; top-level uses `var`/`const`.
-- Statements: expression statements, assignments, channel send (`send ch => v` or `ch <- v`), `go`/`spawn` to start goroutines, `throw`→`panic`, `if/else`, `for (init; cond; post)`, range loops `for (let v of xs)` or `for (let k, v of m)`, `switch/case/default`, `defer`, `break`/`continue`, `return`.
-- Expressions: identifiers, number/string/bool/nil literals, unary `!`/`-`/`<-`/`await` (channel receive), binary `+ - * / % == != < <= > >= && ||`, member access (`fmt.Println`), calls, indexing/slicing (`xs[i]`, `xs[a:b]`), and a restricted `try expr catch err { ... }` sugar for Go-style `(T, error)` calls.
-- Types supported: `number`→`int`, `float`→`float64`, `string`, `boolean`→`bool`, `any`→`interface{}`, `error`, `void` (only as return), generics (`Box<string>`), channels (`chan<number>` requires a type argument), `map<K,V>`, array types via `name[]`.
+- Statements: expression statements, assignments, channel send (`send ch => v` or `ch <- v`), `go`/`spawn` to start goroutines, `throw`→`panic`, `if/else`, `for (init; cond; post)`, range loops `for (let v of xs)` or `for (let k, v of m)`, `switch/case/default` plus type switches via `switch type (x)`, `select { case ... }`, `defer`, `break`/`continue`/`fallthrough`, `return`.
+- Expressions: identifiers, number/string/bool/nil literals, unary `!`/`-`/`<-`/`await` (channel receive), binary `+ - * / % == != < <= > >= && ||`, member access (`fmt.Println`), calls (including variadics), indexing/slicing (`xs[i]`, `xs[a:b]`), arrow function literals `(x: number) => x + 1`, and a restricted `try expr catch err { ... }` sugar for Go-style `(T, error)` calls.
+- Types supported: `number`→`int`, `float`→`float64`, `string`, `boolean`→`bool`, `any`→`interface{}`, `error`, `void` (only as return), generics (`Box<string>`), channels (`chan<number>` requires a type argument), `map<K,V>`, function types `(x: number) => string`, array types via `name[]`.
 
 Anything outside this subset is flagged as a diagnostic by the parser/translator.
 
@@ -61,7 +61,7 @@ More samples:
 - `examples/generics/main.gots`: generic structs/functions, float support.
 - `examples/interfaces/main.gots`: interface definition/usage plus `throw`; paired with `examples/interfaces/native.go` to supply a concrete `Greeter`.
 - `examples/concurrency/main.gots`: goroutines + channels. Uses Go helpers (`examples/concurrency/native.go`) such as `makeIntChannel(size)` (built on a generic `makeChannel[T]`) to create buffered channels.
-- `examples/controlflow/main.gots`: switch/case, range loops over slice/map provided by Go helpers, and `try/catch` sugar for `(T, error)` calls.
+- `examples/controlflow/main.gots`: switch/type-switch, range loops over slice/map provided by Go helpers, select, lambdas, and `try/catch` sugar for `(T, error)` calls.
 
 Some samples rely on small native Go helpers to bridge features like channel creation or concrete interface implementations; see the accompanying `native.go` files.
 

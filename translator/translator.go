@@ -209,6 +209,21 @@ func (t *translator) writeVarDecl(sb *strings.Builder, vd *lang.VarDecl) {
 func (t *translator) writeFunc(sb *strings.Builder, fn *lang.FuncDecl) {
 	name := goName(fn.Name, fn.Exported)
 	sb.WriteString("func ")
+	if fn.Receiver != nil {
+		recvName := strings.ToLower(fn.Receiver.Name)
+		if recvName == "" {
+			recvName = "r"
+		}
+		sb.WriteString("(")
+		sb.WriteString(recvName)
+		sb.WriteString(" ")
+		rtyp, ok := t.goType(*fn.Receiver, false, nil)
+		if !ok {
+			rtyp = "interface{}"
+		}
+		sb.WriteString(rtyp)
+		sb.WriteString(") ")
+	}
 	sb.WriteString(name)
 	if len(fn.TypeParams) > 0 {
 		sb.WriteString("[")
@@ -233,6 +248,9 @@ func (t *translator) writeFunc(sb *strings.Builder, fn *lang.FuncDecl) {
 		}
 		sb.WriteString(p.Name)
 		sb.WriteString(" ")
+		if p.Variadic {
+			sb.WriteString("...")
+		}
 		sb.WriteString(typ)
 	}
 	sb.WriteString(")")
@@ -369,6 +387,65 @@ func (t *translator) writeStmt(sb *strings.Builder, stmt lang.Stmt, indent int, 
 			}
 			sb.WriteString(":\n")
 			caseScope := cloneScope(scope)
+			caseScope["v"] = true
+			for _, st := range c.Body {
+				t.writeStmt(sb, st, indent+1, caseScope, typeParams, fnResults)
+			}
+		}
+		if len(s.Default) > 0 {
+			sb.WriteString(ifIndent(indent))
+			sb.WriteString("\tdefault:\n")
+			defScope := cloneScope(scope)
+			defScope["v"] = true
+			for _, st := range s.Default {
+				t.writeStmt(sb, st, indent+1, defScope, typeParams, fnResults)
+			}
+		}
+		sb.WriteString(ifIndent(indent))
+		sb.WriteString("}\n")
+	case *lang.TypeSwitchStmt:
+		sb.WriteString(ifIndent(indent))
+		sb.WriteString("switch v := ")
+		sb.WriteString(t.exprToString(s.Expr, scope))
+		sb.WriteString(".(type) {\n")
+		for _, c := range s.Cases {
+			sb.WriteString(ifIndent(indent))
+			sb.WriteString("\tcase ")
+			for i, ty := range c.Types {
+				if i > 0 {
+					sb.WriteString(", ")
+				}
+				gt, ok := t.goType(ty, false, nil)
+				if !ok {
+					gt = "interface{}"
+				}
+				sb.WriteString(gt)
+			}
+			sb.WriteString(":\n")
+			caseScope := cloneScope(scope)
+			for _, st := range c.Body {
+				t.writeStmt(sb, st, indent+1, caseScope, typeParams, fnResults)
+			}
+		}
+		if len(s.Default) > 0 {
+			sb.WriteString(ifIndent(indent))
+			sb.WriteString("\tdefault:\n")
+			defScope := cloneScope(scope)
+			for _, st := range s.Default {
+				t.writeStmt(sb, st, indent+1, defScope, typeParams, fnResults)
+			}
+		}
+		sb.WriteString(ifIndent(indent))
+		sb.WriteString("}\n")
+	case *lang.SelectStmt:
+		sb.WriteString(ifIndent(indent))
+		sb.WriteString("select {\n")
+		for _, c := range s.Cases {
+			sb.WriteString(ifIndent(indent))
+			sb.WriteString("\tcase ")
+			sb.WriteString(t.simpleStmtToString(c.Comm, scope, typeParams))
+			sb.WriteString(":\n")
+			caseScope := cloneScope(scope)
 			for _, st := range c.Body {
 				t.writeStmt(sb, st, indent+1, caseScope, typeParams, fnResults)
 			}
@@ -414,6 +491,9 @@ func (t *translator) writeStmt(sb *strings.Builder, stmt lang.Stmt, indent int, 
 	case *lang.ContinueStmt:
 		sb.WriteString(ifIndent(indent))
 		sb.WriteString("continue\n")
+	case *lang.FallthroughStmt:
+		sb.WriteString(ifIndent(indent))
+		sb.WriteString("fallthrough\n")
 	default:
 		t.diag(stmt.Pos(), "statement not supported in translator")
 	}
@@ -454,6 +534,8 @@ func (t *translator) simpleStmtToString(stmt lang.Stmt, scope map[string]bool, t
 			t.diag(s.Pos(), "for clause variable needs an initializer")
 		}
 		return fmt.Sprintf("%s := %s", name, val)
+	case *lang.SendStmt:
+		return fmt.Sprintf("%s <- %s", t.exprToString(s.Chan, scope), t.exprToString(s.Value, scope))
 	default:
 		t.diag(s.Pos(), "unsupported for-statement clause")
 		return ""
@@ -654,6 +736,9 @@ func (t *translator) zeroValue(ref lang.TypeRef, typ string) string {
 	if typ == "" {
 		return "nil"
 	}
+	if ref.Func != nil {
+		return "nil"
+	}
 	switch ref.Name {
 	case "number", "int":
 		return "0"
@@ -702,6 +787,44 @@ func (t *translator) validateTry(te *lang.TryExpr) {
 	}
 }
 
+func (t *translator) funcLitToString(fl *lang.FuncLit, scope map[string]bool) string {
+	var sb strings.Builder
+	sb.WriteString("func(")
+	for i, p := range fl.Params {
+		if i > 0 {
+			sb.WriteString(", ")
+		}
+		typ, ok := t.goType(p.Type, false, nil)
+		if !ok {
+			typ = "interface{}"
+		}
+		sb.WriteString(p.Name)
+		sb.WriteString(" ")
+		if p.Variadic {
+			sb.WriteString("...")
+		}
+		sb.WriteString(typ)
+	}
+	sb.WriteString(")")
+	if len(fl.Results) > 0 {
+		res := t.renderResults(fl.Results, nil)
+		if res != "" {
+			sb.WriteString(" ")
+			sb.WriteString(res)
+		}
+	}
+	sb.WriteString(" {\n")
+	bodyScope := cloneScope(scope)
+	for _, p := range fl.Params {
+		bodyScope[p.Name] = true
+	}
+	for _, st := range fl.Body {
+		t.writeStmt(&sb, st, 1, bodyScope, nil, nil)
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
 func (t *translator) exprToString(expr lang.Expr, scope map[string]bool) string {
 	switch e := expr.(type) {
 	case *lang.IdentExpr:
@@ -740,6 +863,8 @@ func (t *translator) exprToString(expr lang.Expr, scope map[string]bool) string 
 	case *lang.TryExpr:
 		t.diag(expr.Pos(), "try expressions are only supported as standalone statements or initializers")
 		return t.exprToString(e.Expr, scope)
+	case *lang.FuncLit:
+		return t.funcLitToString(e, scope)
 	case *lang.BinaryExpr:
 		op := t.opString(e.Op)
 		left := t.exprToString(e.Left, scope)
@@ -807,6 +932,36 @@ func (t *translator) opString(op lang.TokenType) string {
 }
 
 func (t *translator) goType(ref lang.TypeRef, allowVoid bool, typeParams map[string]bool) (string, bool) {
+	if ref.Func != nil {
+		var sb strings.Builder
+		sb.WriteString("func(")
+		for i, p := range ref.Func.Params {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			pt, ok := t.goType(p.Type, false, typeParams)
+			if !ok {
+				return "", false
+			}
+			sb.WriteString(p.Name)
+			if p.Name != "" {
+				sb.WriteString(" ")
+			}
+			if p.Variadic {
+				sb.WriteString("...")
+			}
+			sb.WriteString(pt)
+		}
+		sb.WriteString(")")
+		if len(ref.Func.Results) > 0 {
+			res := t.renderResults(ref.Func.Results, typeParams)
+			if res != "" {
+				sb.WriteString(" ")
+				sb.WriteString(res)
+			}
+		}
+		return sb.String(), true
+	}
 	base := ref.Name
 	if typeParams != nil && typeParams[ref.Name] {
 		base = ref.Name

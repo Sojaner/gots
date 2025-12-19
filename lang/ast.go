@@ -57,11 +57,13 @@ type Method struct {
 }
 
 type FuncDecl struct {
+	Receiver   *TypeRef
 	Name       string
 	Params     []Param
 	Results    []TypeRef
 	Body       []Stmt
 	TypeParams []string
+	Variadic   bool
 	Exported   bool
 	pos        Position
 }
@@ -72,6 +74,7 @@ func (f *FuncDecl) Pos() Position { return f.pos }
 type Param struct {
 	Name string
 	Type TypeRef
+	Variadic bool
 	Pos  Position
 }
 
@@ -91,7 +94,14 @@ type TypeRef struct {
 	Name     string
 	IsArray  bool
 	TypeArgs []TypeRef
+	Func     *FuncType
 	Pos      Position
+}
+
+type FuncType struct {
+	Params   []Param
+	Results  []TypeRef
+	Variadic bool
 }
 
 type Stmt interface {
@@ -164,6 +174,13 @@ type ContinueStmt struct {
 func (s *ContinueStmt) stmtNode()     {}
 func (s *ContinueStmt) Pos() Position { return s.pos }
 
+type FallthroughStmt struct {
+	pos Position
+}
+
+func (s *FallthroughStmt) stmtNode()     {}
+func (s *FallthroughStmt) Pos() Position { return s.pos }
+
 type IfStmt struct {
 	Cond Expr
 	Then []Stmt
@@ -211,6 +228,37 @@ type CaseClause struct {
 
 func (s *SwitchStmt) stmtNode()     {}
 func (s *SwitchStmt) Pos() Position { return s.pos }
+
+type TypeSwitchStmt struct {
+	Expr    Expr
+	Cases   []TypeCaseClause
+	Default []Stmt
+	pos     Position
+}
+
+type TypeCaseClause struct {
+	Types []TypeRef
+	Body  []Stmt
+	Pos   Position
+}
+
+func (s *TypeSwitchStmt) stmtNode()     {}
+func (s *TypeSwitchStmt) Pos() Position { return s.pos }
+
+type SelectStmt struct {
+	Cases   []SelectCase
+	Default []Stmt
+	pos     Position
+}
+
+type SelectCase struct {
+	Comm Stmt
+	Body []Stmt
+	Pos  Position
+}
+
+func (s *SelectStmt) stmtNode()     {}
+func (s *SelectStmt) Pos() Position { return s.pos }
 
 type GoStmt struct {
 	Call Expr
@@ -338,3 +386,14 @@ type SliceExpr struct {
 
 func (e *SliceExpr) exprNode()   {}
 func (e *SliceExpr) Pos() Position { return e.pos }
+
+type FuncLit struct {
+	Params   []Param
+	Results  []TypeRef
+	Body     []Stmt
+	Variadic bool
+	pos      Position
+}
+
+func (e *FuncLit) exprNode()   {}
+func (e *FuncLit) Pos() Position { return e.pos }

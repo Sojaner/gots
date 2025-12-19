@@ -163,8 +163,17 @@ func (p *parser) parseTypeDecl() *TypeDecl {
 }
 
 func (p *parser) parseFuncDecl() *FuncDecl {
-	nameTok := p.expect(IDENT, "expected function name")
-	fd := &FuncDecl{Name: nameTok.Literal, pos: nameTok.Pos}
+	firstTok := p.expect(IDENT, "expected function name")
+	fd := &FuncDecl{pos: firstTok.Pos}
+	if p.match(DOT) {
+		recvType := TypeRef{Name: firstTok.Literal, Pos: firstTok.Pos}
+		fd.Receiver = &recvType
+		nameTok := p.expect(IDENT, "expected method name after '.'")
+		fd.Name = nameTok.Literal
+		fd.pos = nameTok.Pos
+	} else {
+		fd.Name = firstTok.Literal
+	}
 	fd.TypeParams = p.parseTypeParams()
 
 	p.expect(LPAREN, "expected '(' after function name")
@@ -172,11 +181,16 @@ func (p *parser) parseFuncDecl() *FuncDecl {
 		for {
 			paramName := p.expect(IDENT, "expected parameter name")
 			p.expect(COLON, "expected ':' after parameter name")
+			var variadic bool
+			if p.match(ELLIPSIS) {
+				variadic = true
+			}
 			paramType := p.parseTypeRef()
 			fd.Params = append(fd.Params, Param{
-				Name: paramName.Literal,
-				Type: paramType,
-				Pos:  paramName.Pos,
+				Name:     paramName.Literal,
+				Type:     paramType,
+				Pos:      paramName.Pos,
+				Variadic: variadic,
 			})
 			if !p.match(COMMA) {
 				break
@@ -187,6 +201,9 @@ func (p *parser) parseFuncDecl() *FuncDecl {
 
 	if p.match(COLON) {
 		fd.Results = p.parseReturnTypes()
+	}
+	if len(fd.Params) > 0 && fd.Params[len(fd.Params)-1].Variadic {
+		fd.Variadic = true
 	}
 
 	fd.Body = p.parseBlock()
@@ -207,6 +224,9 @@ func (p *parser) parseTopVarDecl(keyword Token, exported bool) *VarDecl {
 }
 
 func (p *parser) parseTypeRef() TypeRef {
+	if p.match(LPAREN) {
+		return p.parseFuncType()
+	}
 	nameTok := p.expect(IDENT, "expected type name")
 	ref := TypeRef{Name: nameTok.Literal, Pos: nameTok.Pos}
 	ref.TypeArgs = p.parseTypeArgs()
@@ -245,10 +265,14 @@ func (p *parser) parseStmt() Stmt {
 		return &BreakStmt{pos: p.previous().Pos}
 	case p.match(CONTINUE):
 		return &ContinueStmt{pos: p.previous().Pos}
+	case p.match(FALLTHROUGH):
+		return &FallthroughStmt{pos: p.previous().Pos}
 	case p.match(IF):
 		return p.parseIf()
 	case p.match(FOR):
 		return p.parseFor()
+	case p.match(SELECT):
+		return p.parseSelect()
 	case p.match(SWITCH):
 		return p.parseSwitch()
 	case p.match(SEND):
@@ -422,12 +446,100 @@ func (p *parser) parseRangeFor(pos Position) *RangeStmt {
 	return &RangeStmt{Key: key, Value: value, Expr: expr, Body: body, pos: pos}
 }
 
-func (p *parser) parseSwitch() *SwitchStmt {
+func (p *parser) parseSelect() *SelectStmt {
 	pos := p.previous().Pos
+	p.expect(LBRACE, "expected '{' after select")
+	stmt := &SelectStmt{pos: pos}
+	for !p.check(RBRACE) && !p.isAtEnd() {
+		switch {
+		case p.match(CASE):
+			casePos := p.previous().Pos
+			var comm Stmt
+			switch {
+			case p.match(LET, CONST):
+				comm = p.parseVarStmt(p.previous())
+			case p.match(SEND):
+				comm = p.parseSend()
+			default:
+				comm = p.parseExprOrAssign()
+			}
+			p.expect(COLON, "expected ':' after case")
+			body := []Stmt{}
+			for !p.check(CASE) && !p.check(DEFAULT) && !p.check(RBRACE) && !p.isAtEnd() {
+				st := p.parseStmt()
+				if st != nil {
+					body = append(body, st)
+				}
+				p.match(SEMICOLON)
+			}
+			stmt.Cases = append(stmt.Cases, SelectCase{Comm: comm, Body: body, Pos: casePos})
+		case p.match(DEFAULT):
+			p.expect(COLON, "expected ':' after default")
+			body := []Stmt{}
+			for !p.check(CASE) && !p.check(RBRACE) && !p.isAtEnd() {
+				st := p.parseStmt()
+				if st != nil {
+					body = append(body, st)
+				}
+				p.match(SEMICOLON)
+			}
+			stmt.Default = body
+		default:
+			p.errorAtCurrent("expected case or default in select")
+			p.advance()
+		}
+	}
+	p.expect(RBRACE, "expected '}' to close select")
+	return stmt
+}
+
+func (p *parser) parseSwitch() Stmt {
+	pos := p.previous().Pos
+	isTypeSwitch := p.match(TYPE)
 	p.expect(LPAREN, "expected '(' after switch")
 	expr := p.parseExpression()
 	p.expect(RPAREN, "expected ')' after switch expression")
 	p.expect(LBRACE, "expected '{' to start switch")
+
+	if isTypeSwitch {
+		stmt := &TypeSwitchStmt{Expr: expr, pos: pos}
+		for !p.check(RBRACE) && !p.isAtEnd() {
+			switch {
+			case p.match(CASE):
+				casePos := p.previous().Pos
+				types := []TypeRef{p.parseTypeRef()}
+				for p.match(COMMA) {
+					types = append(types, p.parseTypeRef())
+				}
+				p.expect(COLON, "expected ':' after case type")
+				body := []Stmt{}
+				for !p.check(CASE) && !p.check(DEFAULT) && !p.check(RBRACE) && !p.isAtEnd() {
+					st := p.parseStmt()
+					if st != nil {
+						body = append(body, st)
+					}
+					p.match(SEMICOLON)
+				}
+				stmt.Cases = append(stmt.Cases, TypeCaseClause{Types: types, Body: body, Pos: casePos})
+			case p.match(DEFAULT):
+				p.expect(COLON, "expected ':' after default")
+				body := []Stmt{}
+				for !p.check(CASE) && !p.check(RBRACE) && !p.isAtEnd() {
+					st := p.parseStmt()
+					if st != nil {
+						body = append(body, st)
+					}
+					p.match(SEMICOLON)
+				}
+				stmt.Default = body
+			default:
+				p.errorAtCurrent("expected case or default in switch")
+				p.advance()
+			}
+		}
+		p.expect(RBRACE, "expected '}' to close switch")
+		return stmt
+	}
 
 	stmt := &SwitchStmt{Expr: expr, pos: pos}
 	for !p.check(RBRACE) && !p.isAtEnd() {
@@ -440,7 +552,7 @@ func (p *parser) parseSwitch() *SwitchStmt {
 			}
 			p.expect(COLON, "expected ':' after case value")
 			body := []Stmt{}
-			for !p.check(CASE) && !p.check(DEFAULT) && !p.check(RBRACE) && !p.isAtEnd() {
+			for !p.check(CASE) && !p.check(DEFAULT) && !p.isAtEnd() && !p.check(RBRACE) {
 				st := p.parseStmt()
 				if st != nil {
 					body = append(body, st)
@@ -526,6 +638,64 @@ func (p *parser) parseTypeArgs() []TypeRef {
 	return args
 }
 
+func (p *parser) parseFuncType() TypeRef {
+	start := p.previous().Pos
+	params := []Param{}
+	if !p.check(RPAREN) {
+		for {
+			var paramName string
+			var paramPos Position
+			if p.check(IDENT) && p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type == COLON {
+				tok := p.advance()
+				paramName = tok.Literal
+				paramPos = tok.Pos
+				p.expect(COLON, "expected ':' in function type parameter")
+			} else if p.check(IDENT) && p.pos+1 < len(p.tokens) && p.tokens[p.pos+1].Type != COLON {
+				paramPos = p.peek().Pos
+			}
+			var variadic bool
+			if p.match(ELLIPSIS) {
+				variadic = true
+			}
+			tref := p.parseTypeRef()
+			params = append(params, Param{Name: paramName, Type: tref, Pos: paramPos, Variadic: variadic})
+			if !p.match(COMMA) {
+				break
+			}
+		}
+	}
+	p.expect(RPAREN, "expected ')' in function type")
+	p.expect(ARROW, "expected '=>' in function type")
+	var results []TypeRef
+	if p.match(LPAREN) {
+		if !p.check(RPAREN) {
+			for {
+				results = append(results, p.parseTypeRef())
+				if !p.match(COMMA) {
+					break
+				}
+			}
+		}
+		p.expect(RPAREN, "expected ')' after function type results")
+	} else {
+		results = append(results, p.parseTypeRef())
+	}
+	if len(params) > 0 && params[len(params)-1].Variadic {
+		// mark variadic last param only
+		for i := 0; i < len(params)-1; i++ {
+			params[i].Variadic = false
+		}
+	}
+	return TypeRef{
+		Func: &FuncType{
+			Params:   params,
+			Results:  results,
+			Variadic: len(params) > 0 && params[len(params)-1].Variadic,
+		},
+		Pos: start,
+	}
+}
+
 func (p *parser) parseReturnTypes() []TypeRef {
 	if p.match(LPAREN) {
 		var results []TypeRef
@@ -541,6 +711,44 @@ func (p *parser) parseReturnTypes() []TypeRef {
 		return results
 	}
 	return []TypeRef{p.parseTypeRef()}
+}
+
+func (p *parser) parseArrowFunction(start Position) (Expr, bool) {
+	save := p.pos
+	params := []Param{}
+	if !p.check(RPAREN) {
+		for {
+			nameTok := p.expect(IDENT, "expected parameter name")
+			p.expect(COLON, "expected ':' after parameter name")
+			var variadic bool
+			if p.match(ELLIPSIS) {
+				variadic = true
+			}
+			ptype := p.parseTypeRef()
+			params = append(params, Param{Name: nameTok.Literal, Type: ptype, Pos: nameTok.Pos, Variadic: variadic})
+			if !p.match(COMMA) {
+				break
+			}
+		}
+	}
+	if !p.match(RPAREN) {
+		p.pos = save
+		return nil, false
+	}
+	if !p.match(ARROW) {
+		p.pos = save
+		return nil, false
+	}
+	var body []Stmt
+	if p.match(LBRACE) {
+		p.pos--
+		body = p.parseBlock()
+	} else {
+		expr := p.parseExpression()
+		body = []Stmt{&ReturnStmt{Values: []Expr{expr}, pos: start}}
+	}
+	variadic := len(params) > 0 && params[len(params)-1].Variadic
+	return &FuncLit{Params: params, Results: nil, Body: body, Variadic: variadic, pos: start}, true
 }
 
 func (p *parser) parseLogicalOr() Expr {
@@ -651,6 +859,9 @@ func (p *parser) parsePrimary() Expr {
 		expr := Expr(&IdentExpr{Name: p.previous().Literal, pos: p.previous().Pos})
 		return p.finishPostfix(expr)
 	case p.match(LPAREN):
+		if arrow, ok := p.parseArrowFunction(p.previous().Pos); ok {
+			return arrow
+		}
 		expr := p.parseExpression()
 		p.expect(RPAREN, "expected ')' after expression")
 		return p.finishPostfix(expr)
