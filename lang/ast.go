@@ -137,9 +137,28 @@ type VarTupleStmt struct {
 func (s *VarTupleStmt) stmtNode()     {}
 func (s *VarTupleStmt) Pos() Position { return s.pos }
 
+type AssignTupleStmt struct {
+	Names []string
+	Value Expr
+	pos   Position
+}
+
+func (s *AssignTupleStmt) stmtNode()     {}
+func (s *AssignTupleStmt) Pos() Position { return s.pos }
+
+type IncDecStmt struct {
+	Target Expr
+	Op     TokenType
+	pos    Position
+}
+
+func (s *IncDecStmt) stmtNode()     {}
+func (s *IncDecStmt) Pos() Position { return s.pos }
+
 type AssignStmt struct {
 	Target Expr
 	Value  Expr
+	Op     TokenType
 	pos    Position
 }
 

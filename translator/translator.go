@@ -290,6 +290,12 @@ func (t *translator) writeStmt(sb *strings.Builder, stmt lang.Stmt, indent int, 
 		sb.WriteString(" = ")
 		sb.WriteString(t.exprToString(s.Value, scope))
 		sb.WriteString("\n")
+	case *lang.AssignTupleStmt:
+		sb.WriteString(ifIndent(indent))
+		sb.WriteString(strings.Join(s.Names, ", "))
+		sb.WriteString(" = ")
+		sb.WriteString(t.exprToString(s.Value, scope))
+		sb.WriteString("\n")
 	case *lang.ExprStmt:
 		if te, ok := s.Expr.(*lang.TryExpr); ok {
 			t.writeTryExprStmt(sb, te, indent, scope, typeParams, fnResults)
@@ -496,6 +502,14 @@ func (t *translator) writeStmt(sb *strings.Builder, stmt lang.Stmt, indent int, 
 	case *lang.FallthroughStmt:
 		sb.WriteString(ifIndent(indent))
 		sb.WriteString("fallthrough\n")
+	case *lang.IncDecStmt:
+		sb.WriteString(ifIndent(indent))
+		sb.WriteString(t.exprToString(s.Target, scope))
+		if s.Op == lang.PLUSPLUS {
+			sb.WriteString("++\n")
+		} else {
+			sb.WriteString("--\n")
+		}
 	default:
 		t.diag(stmt.Pos(), "statement not supported in translator")
 	}
@@ -942,6 +956,16 @@ func (t *translator) opString(op lang.TokenType) string {
 		return "/"
 	case lang.PERCENT:
 		return "%"
+	case lang.AMPERSAND:
+		return "&"
+	case lang.PIPE:
+		return "|"
+	case lang.CARET:
+		return "^"
+	case lang.SHL:
+		return "<<"
+	case lang.SHR:
+		return ">>"
 	case lang.EQEQ:
 		return "=="
 	case lang.BANGEQ:

@@ -602,13 +602,16 @@ func (p *parser) parseSwitch() Stmt {
 
 func (p *parser) parseExprOrAssign() Stmt {
 	expr := p.parseExpression()
-	if p.match(EQ) {
+	if p.match(PLUSPLUS, MINUSMINUS) {
+		return &IncDecStmt{Target: expr, Op: p.previous().Type, pos: expr.Pos()}
+	}
+	if p.match(EQ, PLUSEQ, MINUSEQ, STAREQ, SLASHEQ, PERCENTEQ, ANDEQ, OREQ, XOREQ, SHLEQ, SHREQ) {
+		op := p.previous()
 		value := p.parseExpression()
-		return &AssignStmt{
-			Target: expr,
-			Value:  value,
-			pos:    expr.Pos(),
+		if op.Type != EQ {
+			value = &BinaryExpr{Op: tokenToOp(op.Type), Left: expr, Right: value, pos: op.Pos}
 		}
+		return &AssignStmt{Target: expr, Value: value, Op: op.Type, pos: expr.Pos()}
 	}
 	if p.match(LARROW) {
 		value := p.parseExpression()
@@ -618,7 +621,51 @@ func (p *parser) parseExprOrAssign() Stmt {
 			pos:   expr.Pos(),
 		}
 	}
+	if p.match(COMMA) {
+		second := p.expect(IDENT, "expected identifier in tuple assignment")
+		p.expect(EQ, "expected '=' in tuple assignment")
+		value := p.parseExpression()
+		return &AssignTupleStmt{
+			Names: []string{p.extractName(expr), second.Literal},
+			Value: value,
+			pos:   expr.Pos(),
+		}
+	}
 	return &ExprStmt{Expr: expr, pos: expr.Pos()}
+}
+
+func (p *parser) extractName(expr Expr) string {
+	if id, ok := expr.(*IdentExpr); ok {
+		return id.Name
+	}
+	return ""
+}
+
+func tokenToOp(tt TokenType) TokenType {
+	switch tt {
+	case PLUSEQ:
+		return PLUS
+	case MINUSEQ:
+		return MINUS
+	case STAREQ:
+		return STAR
+	case SLASHEQ:
+		return SLASH
+	case PERCENTEQ:
+		return PERCENT
+	case ANDEQ:
+		return AMPERSAND
+	case OREQ:
+		return PIPE
+	case XOREQ:
+		return CARET
+	case SHLEQ:
+		return SHL
+	case SHREQ:
+		return SHR
+	default:
+		return EQ
+	}
 }
 
 func (p *parser) parseExpression() Expr {
@@ -794,10 +841,10 @@ func (p *parser) parseArrowFunction(start Position) (Expr, bool) {
 }
 
 func (p *parser) parseLogicalOr() Expr {
-	expr := p.parseLogicalAnd()
+	expr := p.parseBitwiseOr()
 	for p.match(OROR) {
 		op := p.previous()
-		right := p.parseLogicalAnd()
+		right := p.parseBitwiseOr()
 		expr = &BinaryExpr{Op: op.Type, Left: expr, Right: right, pos: op.Pos}
 	}
 	return expr
@@ -806,6 +853,36 @@ func (p *parser) parseLogicalOr() Expr {
 func (p *parser) parseLogicalAnd() Expr {
 	expr := p.parseEquality()
 	for p.match(ANDAND) {
+		op := p.previous()
+		right := p.parseEquality()
+		expr = &BinaryExpr{Op: op.Type, Left: expr, Right: right, pos: op.Pos}
+	}
+	return expr
+}
+
+func (p *parser) parseBitwiseOr() Expr {
+	expr := p.parseBitwiseAnd()
+	for p.match(PIPE, CARET) {
+		op := p.previous()
+		right := p.parseBitwiseAnd()
+		expr = &BinaryExpr{Op: op.Type, Left: expr, Right: right, pos: op.Pos}
+	}
+	return expr
+}
+
+func (p *parser) parseBitwiseAnd() Expr {
+	expr := p.parseShift()
+	for p.match(AMPERSAND) {
+		op := p.previous()
+		right := p.parseShift()
+		expr = &BinaryExpr{Op: op.Type, Left: expr, Right: right, pos: op.Pos}
+	}
+	return expr
+}
+
+func (p *parser) parseShift() Expr {
+	expr := p.parseEquality()
+	for p.match(SHL, SHR) {
 		op := p.previous()
 		right := p.parseEquality()
 		expr = &BinaryExpr{Op: op.Type, Left: expr, Right: right, pos: op.Pos}

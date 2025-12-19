@@ -100,18 +100,54 @@ func (l *Lexer) NextToken() Token {
 		l.read()
 		return tok
 	case '+':
+		if l.peek() == '+' {
+			l.read()
+			tok := Token{Type: PLUSPLUS, Literal: "++", Pos: pos}
+			l.read()
+			return tok
+		}
+		if l.peek() == '=' {
+			l.read()
+			tok := Token{Type: PLUSEQ, Literal: "+=", Pos: pos}
+			l.read()
+			return tok
+		}
 		tok := Token{Type: PLUS, Literal: "+", Pos: pos}
 		l.read()
 		return tok
 	case '-':
+		if l.peek() == '-' {
+			l.read()
+			tok := Token{Type: MINUSMINUS, Literal: "--", Pos: pos}
+			l.read()
+			return tok
+		}
+		if l.peek() == '=' {
+			l.read()
+			tok := Token{Type: MINUSEQ, Literal: "-=", Pos: pos}
+			l.read()
+			return tok
+		}
 		tok := Token{Type: MINUS, Literal: "-", Pos: pos}
 		l.read()
 		return tok
 	case '*':
+		if l.peek() == '=' {
+			l.read()
+			tok := Token{Type: STAREQ, Literal: "*=", Pos: pos}
+			l.read()
+			return tok
+		}
 		tok := Token{Type: STAR, Literal: "*", Pos: pos}
 		l.read()
 		return tok
 	case '%':
+		if l.peek() == '=' {
+			l.read()
+			tok := Token{Type: PERCENTEQ, Literal: "%=", Pos: pos}
+			l.read()
+			return tok
+		}
 		tok := Token{Type: PERCENT, Literal: "%", Pos: pos}
 		l.read()
 		return tok
@@ -142,6 +178,18 @@ func (l *Lexer) NextToken() Token {
 		l.read()
 		return tok
 	case '<':
+		if l.peek() == '<' {
+			l.read()
+			if l.peek() == '=' {
+				l.read()
+				tok := Token{Type: SHLEQ, Literal: "<<=", Pos: pos}
+				l.read()
+				return tok
+			}
+			tok := Token{Type: SHL, Literal: "<<", Pos: pos}
+			l.read()
+			return tok
+		}
 		if l.peek() == '-' {
 			l.read()
 			tok := Token{Type: LARROW, Literal: "<-", Pos: pos}
@@ -158,6 +206,18 @@ func (l *Lexer) NextToken() Token {
 		l.read()
 		return tok
 	case '>':
+		if l.peek() == '>' {
+			l.read()
+			if l.peek() == '=' {
+				l.read()
+				tok := Token{Type: SHREQ, Literal: ">>=", Pos: pos}
+				l.read()
+				return tok
+			}
+			tok := Token{Type: SHR, Literal: ">>", Pos: pos}
+			l.read()
+			return tok
+		}
 		if l.peek() == '=' {
 			l.read()
 			tok := Token{Type: GTEQ, Literal: ">=", Pos: pos}
@@ -174,6 +234,15 @@ func (l *Lexer) NextToken() Token {
 			l.read()
 			return tok
 		}
+		if l.peek() == '=' {
+			l.read()
+			tok := Token{Type: ANDEQ, Literal: "&=", Pos: pos}
+			l.read()
+			return tok
+		}
+		tok := Token{Type: AMPERSAND, Literal: "&", Pos: pos}
+		l.read()
+		return tok
 	case '|':
 		if l.peek() == '|' {
 			l.read()
@@ -181,6 +250,25 @@ func (l *Lexer) NextToken() Token {
 			l.read()
 			return tok
 		}
+		if l.peek() == '=' {
+			l.read()
+			tok := Token{Type: OREQ, Literal: "|=", Pos: pos}
+			l.read()
+			return tok
+		}
+		tok := Token{Type: PIPE, Literal: "|", Pos: pos}
+		l.read()
+		return tok
+	case '^':
+		if l.peek() == '=' {
+			l.read()
+			tok := Token{Type: XOREQ, Literal: "^=", Pos: pos}
+			l.read()
+			return tok
+		}
+		tok := Token{Type: CARET, Literal: "^", Pos: pos}
+		l.read()
+		return tok
 	case '"':
 		literal := l.readString()
 		return Token{Type: STRING, Literal: literal, Pos: pos}
